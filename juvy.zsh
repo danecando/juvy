@@ -77,8 +77,10 @@ _juvy_rm() {
 _juvy_backup() {
   if [[ -d $JUVY_BACKUP_DIR ]]; then
     rsync -a --files-from="$JUVY_BACKUP" "$HOME" "$JUVY_BACKUP_DIR"
-    _juvy_git add .
-    _juvy_git commit -m "Backup: $(_juvy_timestamp)"
+    if [[ -n $(_juvy_git status --porcelain) ]]; then
+      _juvy_git add .
+      _juvy_git commit -m "Backup: $(_juvy_timestamp)"
+    fi
   else
     printf "juvy: Set JUVY_BACKUP_DIR value in %s" $JUVY_CONFIG >&2
   fi
