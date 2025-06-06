@@ -1,6 +1,6 @@
 emulate -L zsh
 
-JUVY_VERSION="1.0.0"
+JUVY_VERSION="1.0.1"
 JUVY_CONFIG_DIR=$HOME/.config/juvy
 JUVY_CONFIG=$JUVY_CONFIG_DIR/config
 JUVY_BACKUP=$JUVY_CONFIG_DIR/backup
@@ -9,7 +9,7 @@ if [[ -f $JUVY_CONFIG ]]; then
   source "$JUVY_CONFIG"
 fi
 
-: ${JUVY_BACKUP_DIR:="$HOME/Library/Mobile\ Documents/com~apple~CloudDocs/juvy"}
+: ${JUVY_BACKUP_DIR:="$HOME/Library/Mobile Documents/com~apple~CloudDocs/juvy"}
 
 juvy() {
   case $1 in
@@ -75,7 +75,7 @@ _juvy_init_backups() {
       fi
     fi
 
-    print -r "JUVY_BACKUP_DIR=$JUVY_BACKUP_DIR" > $JUVY_CONFIG
+    print -r "JUVY_BACKUP_DIR=$(printf %q "$JUVY_BACKUP_DIR")" > $JUVY_CONFIG
   fi 
 
   if ! [[ -d "$JUVY_BACKUP_DIR/.git" ]]; then
