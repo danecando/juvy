@@ -9,16 +9,18 @@ Currently targets macOS devices that use zsh as their shell. Default backup dire
 ### Quick Install (Recommended)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/juvy.zsh | zsh
+curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 ```
 
 ### Manual Install
 
 ```bash
-# Clone and install
+# Clone the repository
 git clone https://github.com/danecando/juvy.git
 cd juvy
-source juvy.zsh && juvy install
+
+# Run the installer
+zsh install.sh
 ```
 
 After installation, restart your shell or run:
@@ -27,14 +29,14 @@ source ~/.zshrc
 ```
 
 The installer will:
-- Download/copy juvy to `~/.juvy.zsh`
-- Add it to your `.zshrc`
+- Create `~/.juvy/` directory for juvy files
+- Download the latest version
+- Add juvy to your `.zshrc`
 - Detect existing configurations
 - Optionally run initial setup
 
 ## Commands
 
-- `juvy install` - Install juvy to your system
 - `juvy init` - Set up backup directories and configuration
 - `juvy backup` - Backup all files in the backup list
 - `juvy rm` - Remove all config files and backup directory
