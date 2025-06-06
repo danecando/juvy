@@ -17,11 +17,7 @@ juvy() {
       _juvy_init $@
       ;;
     "rm")
-      print "juvy: Are you sure you want to remove the configuration and backup directories? [y/N]"
-      read -r "confirm?"
-      if [[ $confirm == "y" ]]; then
-        _juvy_rm $@
-      fi
+      _juvy_rm $@
       ;;
     "backup")
       _juvy_backup $@
@@ -36,8 +32,8 @@ juvy() {
     "update")
       _juvy_update $@
       ;;
-    "clean")
-      _juvy_clean $@
+    "nuke")
+      _juvy_nuke $@
       ;;
     *)
       if [[ -z $1 ]]; then
@@ -88,9 +84,26 @@ _juvy_init_backups() {
 }
 
 _juvy_rm() {
-  rm -rf $JUVY_CONFIG_DIR
-  rm -rf $JUVY_BACKUP_DIR
-  print "juvy: Removed configuration and backup directories"
+  print "This will remove juvy from your system (but preserve backups):"
+  print "  • Configuration directory: $JUVY_CONFIG_DIR"
+  print "  • Installation directory: $HOME/.juvy"
+  print "  • juvy entry from ~/.zshrc"
+  print ""
+  print "❗ Backup directory will be preserved: $JUVY_BACKUP_DIR"
+  print "Are you sure you want to proceed? [y/N] "
+  read -r "confirm?"
+  
+  if [[ "$confirm" != "y" ]]; then
+    print "Remove cancelled"
+    return 0
+  fi
+  
+  _juvy_rm_internal
+  
+  print ""
+  print "✅ juvy has been removed from your system"
+  print "💾 Your backups are preserved in: $JUVY_BACKUP_DIR"
+  print "ℹ️  Restart your shell or run: source ~/.zshrc"
 }
 
 _juvy_backup() {
@@ -155,32 +168,42 @@ _juvy_update() {
   fi
 }
 
-_juvy_clean() {
-  print "This will remove ALL juvy files including:"
+_juvy_nuke() {
+  print "🚨 WARNING: This will COMPLETELY DESTROY all juvy data including:"
   print "  • Configuration directory: $JUVY_CONFIG_DIR"
   print "  • Backup directory: $JUVY_BACKUP_DIR"
   print "  • Installation directory: $HOME/.juvy"
   print "  • juvy entry from ~/.zshrc"
   print ""
+  print "💥 ALL YOUR BACKUPS WILL BE DELETED!"
   print "❗ This action cannot be undone!"
-  print "Are you sure you want to proceed? [y/N] "
+  print "Are you absolutely sure? [y/N] "
   read -r "confirm?"
   
   if [[ "$confirm" != "y" ]]; then
-    print "Clean cancelled"
+    print "Nuke cancelled"
     return 0
   fi
   
-  # Remove configuration directory
-  if [[ -d "$JUVY_CONFIG_DIR" ]]; then
-    rm -rf "$JUVY_CONFIG_DIR"
-    print "🗑️  Removed configuration directory"
-  fi
+  # Call rm function first (removes config, installation, .zshrc)
+  _juvy_rm_internal
   
   # Remove backup directory
   if [[ -d "$JUVY_BACKUP_DIR" ]]; then
     rm -rf "$JUVY_BACKUP_DIR"
-    print "🗑️  Removed backup directory"
+    print "💥 Nuked backup directory"
+  fi
+  
+  print ""
+  print "💥 juvy has been completely nuked from your system"
+  print "ℹ️  Restart your shell or run: source ~/.zshrc"
+}
+
+_juvy_rm_internal() {
+  # Remove configuration directory
+  if [[ -d "$JUVY_CONFIG_DIR" ]]; then
+    rm -rf "$JUVY_CONFIG_DIR"
+    print "🗑️  Removed configuration directory"
   fi
   
   # Remove installation directory
@@ -196,10 +219,6 @@ _juvy_clean() {
     mv "$HOME/.zshrc.tmp" "$HOME/.zshrc"
     print "🗑️  Removed juvy from .zshrc"
   fi
-  
-  print ""
-  print "✅ juvy has been completely removed from your system"
-  print "ℹ️  Restart your shell or run: source ~/.zshrc"
 }
 
 _juvy_help() {
@@ -213,6 +232,6 @@ _juvy_help() {
   print "  git       Run git commands in backup directory"
   print "  update    Update juvy to the latest version"
   print "  version   Show version information"
-  print "  rm        Remove juvy configuration and backups"
-  print "  clean     Completely remove juvy from system"
+  print "  rm        Remove juvy from system (preserves backups)"
+  print "  nuke      Completely destroy juvy and all backups"
 }
