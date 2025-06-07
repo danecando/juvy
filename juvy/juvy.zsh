@@ -255,6 +255,8 @@ _juvy_parse_backup_entry() {
   local path permissions
   
   # Check for permission hint: ~/.ssh/config -> 600
+  # NOTE: Permission hints are parsed but not yet applied in backup flow
+  # This is planned for future implementation
   if [[ "$entry" == *" -> "* ]]; then
     path="${entry%% -> *}"
     permissions="${entry##* -> }"
@@ -263,6 +265,37 @@ _juvy_parse_backup_entry() {
   else
     print "path:$entry"
   fi
+}
+
+_juvy_resolve_dest_dir() {
+  local clean_path="$1"
+  local for_file="$2"  # "true" if resolving for a file, empty for directory
+  local dest_dir
+  
+  if [[ "$clean_path" == ~/* ]]; then
+    # Home-relative path: convert ~/path to /path for destination
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR$(dirname "${clean_path#\~}")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR${clean_path#\~}"
+    fi
+  elif [[ "$clean_path" == /* ]]; then
+    # Absolute path: use as-is but create in backup dir
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR$(dirname "$clean_path")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR$clean_path"
+    fi
+  else
+    # Implicit home-relative: add / prefix
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR/$(dirname "$clean_path")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR/$clean_path"
+    fi
+  fi
+  
+  print "$dest_dir"
 }
 
 _juvy_process_backup_entries() {
@@ -304,17 +337,7 @@ _juvy_process_backup_entries() {
       print "📁 Backing up directory: $clean_path"
       
       # For directories, create destination directory and sync contents
-      # Use clean_path for destination structure
-      if [[ "$clean_path" == ~/* ]]; then
-        # Home-relative path: convert ~/path to /path for destination
-        dest_dir="$JUVY_BACKUP_DIR${clean_path#\~}"
-      elif [[ "$clean_path" == /* ]]; then
-        # Absolute path: use as-is but create in backup dir
-        dest_dir="$JUVY_BACKUP_DIR$clean_path"
-      else
-        # Implicit home-relative: add / prefix
-        dest_dir="$JUVY_BACKUP_DIR/$clean_path"
-      fi
+      dest_dir="$(_juvy_resolve_dest_dir "$clean_path")"
       
       # Create destination directory structure
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
@@ -339,17 +362,7 @@ _juvy_process_backup_entries() {
       print "📄 Backing up file: $clean_path"
       
       # For files, create destination directory and copy file
-      # Use clean_path for destination structure
-      if [[ "$clean_path" == ~/* ]]; then
-        # Home-relative path: convert ~/path to /path for destination
-        dest_dir="$JUVY_BACKUP_DIR$(dirname "${clean_path#\~}")"
-      elif [[ "$clean_path" == /* ]]; then
-        # Absolute path: use as-is but create in backup dir
-        dest_dir="$JUVY_BACKUP_DIR$(dirname "$clean_path")"
-      else
-        # Implicit home-relative: add / prefix
-        dest_dir="$JUVY_BACKUP_DIR/$(dirname "$clean_path")"
-      fi
+      dest_dir="$(_juvy_resolve_dest_dir "$clean_path" "true")"
       
       # Create destination directory structure
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
@@ -840,7 +853,7 @@ _juvy_add() {
         # Absolute path - use as-is
         backup_entry="$full_path"
       else
-        print "❌ Invalid path format: $path" >&2
+        print "❌ Invalid path format: $path. Accepted formats: absolute paths (e.g., /path/to/file), home-relative paths (e.g., ~/file), or paths relative to the current directory." >&2
         continue
       fi
       
