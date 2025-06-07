@@ -236,6 +236,77 @@ _juvy_check() {
   print "✅ Backup file validation completed"
 }
 
+_juvy_resolve_backup_path() {
+  local entry="$1"
+  local resolved_path
+  
+  # Handle different path formats
+  case "$entry" in
+    (\~/*) 
+      # Explicit home-relative: ~/path -> $HOME/path
+      resolved_path="${HOME}${entry#\~}"
+      ;;
+    (/*)
+      # Absolute path: /etc/hosts -> /etc/hosts
+      resolved_path="$entry"
+      ;;
+    (*)
+      # Implicit home-relative: .zshrc -> $HOME/.zshrc
+      resolved_path="$HOME/$entry"
+      ;;
+  esac
+  
+  print "$resolved_path"
+}
+
+_juvy_parse_backup_entry() {
+  local entry="$1"
+  local path permissions
+  
+  # Check for permission hint: ~/.ssh/config -> 600
+  # NOTE: Permission hints are parsed but not yet applied in backup flow
+  # This is planned for future implementation
+  if [[ "$entry" == *" -> "* ]]; then
+    path="${entry%% -> *}"
+    permissions="${entry##* -> }"
+    print "path:$path"
+    print "perms:$permissions"
+  else
+    print "path:$entry"
+  fi
+}
+
+_juvy_resolve_dest_dir() {
+  local clean_path="$1"
+  local for_file="$2"  # "true" if resolving for a file, empty for directory
+  local dest_dir
+  
+  if [[ "$clean_path" == ~/* ]]; then
+    # Home-relative path: convert ~/path to /path for destination
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR$(dirname "${clean_path#\~}")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR${clean_path#\~}"
+    fi
+  elif [[ "$clean_path" == /* ]]; then
+    # Absolute path: use as-is but create in backup dir
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR$(dirname "$clean_path")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR$clean_path"
+    fi
+  else
+    # Implicit home-relative: add / prefix
+    if [[ "$for_file" == "true" ]]; then
+      dest_dir="$JUVY_BACKUP_DIR/$(dirname "$clean_path")"
+    else
+      dest_dir="$JUVY_BACKUP_DIR/$clean_path"
+    fi
+  fi
+  
+  print "$dest_dir"
+}
+
 _juvy_process_backup_entries() {
   local entry
   local source_path
@@ -254,19 +325,28 @@ _juvy_process_backup_entries() {
     
     [[ -z "$entry" ]] && continue
     
-    source_path="$HOME$entry"
+    # Parse entry for path and optional permissions
+    local parsed_entry
+    parsed_entry="$(_juvy_parse_backup_entry "$entry")"
     
-    if [[ "$entry" == */ ]]; then
+    # Extract path from parsed entry
+    local clean_path
+    clean_path="$(print "$parsed_entry" | grep '^path:' | cut -d: -f2-)"
+    
+    # Resolve the actual filesystem path
+    source_path="$(_juvy_resolve_backup_path "$clean_path")"
+    
+    if [[ "$clean_path" == */ ]]; then
       # Directory entry (ends with /)
       if [[ ! -d "$source_path" ]]; then
         print "⚠️  Directory not found: $source_path" >&2
         continue
       fi
       
-      print "📁 Backing up directory: $entry"
+      print "📁 Backing up directory: $clean_path"
       
       # For directories, create destination directory and sync contents
-      dest_dir="$JUVY_BACKUP_DIR$entry"
+      dest_dir="$(_juvy_resolve_dest_dir "$clean_path")"
       
       # Create destination directory structure
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
@@ -276,7 +356,7 @@ _juvy_process_backup_entries() {
       
       # Use rsync to copy directory contents recursively
       if ! _juvy_rsync_directory "$source_path" "$dest_dir"; then
-        print "❌ Failed to backup directory: $entry" >&2
+        print "❌ Failed to backup directory: $clean_path" >&2
         return 1
       fi
       
@@ -288,10 +368,10 @@ _juvy_process_backup_entries() {
         continue
       fi
       
-      print "📄 Backing up file: $entry"
+      print "📄 Backing up file: $clean_path"
       
       # For files, create destination directory and copy file
-      dest_dir="$JUVY_BACKUP_DIR$(dirname "$entry")"
+      dest_dir="$(_juvy_resolve_dest_dir "$clean_path" "true")"
       
       # Create destination directory structure
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
@@ -301,7 +381,7 @@ _juvy_process_backup_entries() {
       
       # Use rsync to copy individual file
       if ! _juvy_rsync_file "$source_path" "$dest_dir/"; then
-        print "❌ Failed to backup file: $entry" >&2
+        print "❌ Failed to backup file: $clean_path" >&2
         return 1
       fi
       
@@ -773,18 +853,18 @@ _juvy_add() {
         full_path="$PWD/$path"
       fi
       
-      # Convert to relative path from HOME
+      # Convert to backup entry format using Unix conventions
       local backup_entry
       if [[ "$full_path" == "$HOME"* ]]; then
-        backup_entry="${full_path#$HOME}"
+        # Convert to home-relative with ~/ prefix
+        backup_entry="~${full_path#$HOME}"
+      elif [[ "$full_path" == /* ]]; then
+        # Absolute path - use as-is
+        backup_entry="$full_path"
       else
-        print "❌ Path must be within home directory: $path" >&2
+        print "❌ Invalid path format: $path. Accepted formats: absolute paths (e.g., /path/to/file), home-relative paths (e.g., ~/file), or paths relative to the current directory." >&2
         continue
       fi
-      
-      # Normalize path (remove leading slash if present)
-      backup_entry="${backup_entry#/}"
-      backup_entry="/$backup_entry"
       
       # Check if path exists and determine type
       if [[ -d "$full_path" ]]; then
@@ -1362,8 +1442,10 @@ _juvy_help() {
   print "Commands:"
   print "  init        Initialize juvy configuration"
   print "  add         Add files/directories to backup list (or edit with \$EDITOR)"
-  print "              Files: 'add ~/.zshrc' or 'add /path/to/file'"
-  print "              Directories: 'add ~/.config/nvim/' (trailing slash auto-added)"
+  print "              Files: 'add ~/.zshrc' or 'add /etc/hosts'"
+  print "              Directories: 'add ~/.config/nvim/' (with trailing slash)"
+  print "              Absolute paths: '/etc/hosts' (may require sudo for backup)"
+  print "              Home paths: '~/.zshrc' (recommended for dotfiles)"
   print "              Validates paths and warns about large directories (>100MB)"
   print "              Detects sensitive files (SSH keys, certificates, etc.)"
   print "              Use 'add --force <path>' to bypass security warnings"
