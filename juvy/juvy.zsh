@@ -621,15 +621,7 @@ _juvy_add() {
         continue
       fi
       
-      # Check if file is sensitive (unless forced)
-      if [[ "$force_flag" != "true" ]] && _juvy_is_sensitive_file "$path"; then
-        if ! _juvy_show_security_warning "$path"; then
-          print "❌ Cancelled adding '$path'"
-          continue
-        fi
-      fi
-      
-      # For directories, check size and prompt if needed
+      # Convert to full path for validation
       local full_path
       if [[ "$path" = /* ]]; then
         full_path="$path"
@@ -637,6 +629,17 @@ _juvy_add() {
         full_path="$HOME/${path#/}"
       fi
       
+      # Check for sensitive files (unless --force is used)
+      if [[ "$force_flag" != "true" ]] && [[ -f "$full_path" ]]; then
+        if _juvy_is_sensitive_file "$path"; then
+          if ! _juvy_show_security_warning "$path"; then
+            print "❌ Skipped adding sensitive file: $path"
+            continue
+          fi
+        fi
+      fi
+      
+      # For directories, check size and prompt if needed
       if [[ -d "$full_path" ]]; then
         if _juvy_calculate_directory_info "$path"; then
           # Check if directory is larger than 100MB (104857600 bytes)
@@ -664,6 +667,8 @@ _juvy_help() {
   print "Commands:"
   print "  init        Initialize juvy configuration"
   print "  add         Add files to backup list (or edit with \$EDITOR)"
+  print "              Validates paths and warns about large directories (>100MB)"
+  print "              Detects sensitive files (SSH keys, certificates, etc.)"
   print "  backup      Backup files to configured directory"
   print "  check       Validate backup file without running backup"
   print "  git         Run git commands in backup directory"
@@ -673,5 +678,5 @@ _juvy_help() {
   print "  nuke        Completely destroy juvy and all backups"
   print ""
   print "Add command options:"
-  print "  --force     Skip confirmation prompts for sensitive files and large directories"
+  print "  --force     Skip confirmation prompts for large directories and security warnings"
 }
