@@ -189,8 +189,8 @@ _juvy_backup() {
   # Validate backup file before starting rsync
   _juvy_validate_backup_file
   
-  # Use enhanced rsync with error handling and retry logic
-  if ! _juvy_rsync_with_retry "$HOME" "$JUVY_BACKUP_DIR" "$JUVY_BACKUP"; then
+  # Process backup entries with support for directories and files
+  if ! _juvy_process_backup_entries; then
     print "❌ Backup failed" >&2
     return 1
   fi
@@ -221,6 +221,151 @@ _juvy_check() {
   
   _juvy_validate_backup_file
   print "✅ Backup file validation completed"
+}
+
+_juvy_process_backup_entries() {
+  local entry
+  local source_path
+  local dest_dir
+  local file_count=0
+  local dir_count=0
+  
+  # Read backup file line by line
+  while IFS= read -r entry; do
+    # Skip empty lines and comments
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    # Remove leading/trailing whitespace
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    
+    [[ -z "$entry" ]] && continue
+    
+    source_path="$HOME$entry"
+    
+    if [[ "$entry" == */ ]]; then
+      # Directory entry (ends with /)
+      if [[ ! -d "$source_path" ]]; then
+        print "⚠️  Directory not found: $source_path" >&2
+        continue
+      fi
+      
+      print "📁 Backing up directory: $entry"
+      
+      # For directories, create destination directory and sync contents
+      dest_dir="$JUVY_BACKUP_DIR$entry"
+      
+      # Create destination directory structure
+      if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
+        print "❌ Failed to create destination directory: $dest_dir" >&2
+        return 1
+      fi
+      
+      # Use rsync to copy directory contents recursively
+      if ! _juvy_rsync_directory "$source_path" "$dest_dir"; then
+        print "❌ Failed to backup directory: $entry" >&2
+        return 1
+      fi
+      
+      (( dir_count++ ))
+    else
+      # File entry
+      if [[ ! -f "$source_path" ]]; then
+        print "⚠️  File not found: $source_path" >&2
+        continue
+      fi
+      
+      print "📄 Backing up file: $entry"
+      
+      # For files, create destination directory and copy file
+      dest_dir="$JUVY_BACKUP_DIR$(dirname "$entry")"
+      
+      # Create destination directory structure
+      if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
+        print "❌ Failed to create destination directory: $dest_dir" >&2
+        return 1
+      fi
+      
+      # Use rsync to copy individual file
+      if ! _juvy_rsync_file "$source_path" "$dest_dir/"; then
+        print "❌ Failed to backup file: $entry" >&2
+        return 1
+      fi
+      
+      (( file_count++ ))
+    fi
+  done < "$JUVY_BACKUP"
+  
+  print "ℹ️  Processed $file_count files and $dir_count directories"
+  return 0
+}
+
+_juvy_rsync_directory() {
+  local source="$1"
+  local dest="$2"
+  local max_retries=3
+  local retry_count=0
+  local rsync_output
+  local rsync_exit_code
+  
+  while (( retry_count < max_retries )); do
+    # Use rsync with -a (archive mode) and --delete to sync directory contents
+    if rsync_output=$(rsync -av --delete "$source" "$dest" 2>&1); then
+      return 0
+    fi
+    
+    rsync_exit_code=$?
+    
+    # Handle retries for transient errors (same logic as existing function)
+    case $rsync_exit_code in
+      (30|11)  # Timeout or I/O error
+        (( retry_count++ ))
+        if (( retry_count < max_retries )); then
+          print "⚠️  rsync error, retrying ($retry_count/$max_retries)..." >&2
+          _juvy_log_error "rsync directory error (exit code $rsync_exit_code), retry $retry_count/$max_retries: $rsync_output"
+          sleep 2
+          continue
+        fi
+        ;;
+    esac
+    
+    _juvy_log_error "rsync directory failed (exit code $rsync_exit_code): $rsync_output"
+    return $rsync_exit_code
+  done
+}
+
+_juvy_rsync_file() {
+  local source="$1"
+  local dest="$2"
+  local max_retries=3
+  local retry_count=0
+  local rsync_output
+  local rsync_exit_code
+  
+  while (( retry_count < max_retries )); do
+    # Use rsync with -a (archive mode) for individual file
+    if rsync_output=$(rsync -av "$source" "$dest" 2>&1); then
+      return 0
+    fi
+    
+    rsync_exit_code=$?
+    
+    # Handle retries for transient errors (same logic as existing function)
+    case $rsync_exit_code in
+      (30|11)  # Timeout or I/O error
+        (( retry_count++ ))
+        if (( retry_count < max_retries )); then
+          print "⚠️  rsync error, retrying ($retry_count/$max_retries)..." >&2
+          _juvy_log_error "rsync file error (exit code $rsync_exit_code), retry $retry_count/$max_retries: $rsync_output"
+          sleep 2
+          continue
+        fi
+        ;;
+    esac
+    
+    _juvy_log_error "rsync file failed (exit code $rsync_exit_code): $rsync_output"
+    return $rsync_exit_code
+  done
 }
 
 _juvy_timestamp() {
@@ -607,40 +752,49 @@ _juvy_add() {
         continue
       fi
       
-      # Convert to normalized path (relative to HOME, no leading slash)
-      local normalized_path="$path"
-      if [[ "$path" = "$HOME"* ]]; then
-        normalized_path="${path#$HOME}"
+      # Convert to absolute path if relative
+      local full_path
+      if [[ "$path" == /* ]]; then
+        full_path="$path"
+      else
+        full_path="$PWD/$path"
       fi
-      normalized_path="${normalized_path#/}"
-      normalized_path="/$normalized_path"
       
-      # Check if path is already in backup file
-      if grep -Fxq "$normalized_path" "$JUVY_BACKUP" 2>/dev/null; then
-        print "ℹ️  Path already in backup list: $normalized_path"
+      # Convert to relative path from HOME
+      local backup_entry
+      if [[ "$full_path" == "$HOME"* ]]; then
+        backup_entry="${full_path#$HOME}"
+      else
+        print "❌ Path must be within home directory: $path" >&2
         continue
       fi
       
-      # Convert to full path for validation
-      local full_path
-      if [[ "$path" = /* ]]; then
-        full_path="$path"
-      else
-        full_path="$HOME/${path#/}"
-      fi
+      # Normalize path (remove leading slash if present)
+      backup_entry="${backup_entry#/}"
+      backup_entry="/$backup_entry"
       
-      # Check for sensitive files (unless --force is used)
-      if [[ "$force_flag" != "true" ]] && [[ -f "$full_path" ]]; then
-        if _juvy_is_sensitive_file "$path"; then
-          if ! _juvy_show_security_warning "$path"; then
-            print "❌ Skipped adding sensitive file: $path"
+      # Check if path exists and determine type
+      if [[ -d "$full_path" ]]; then
+        # Directory - ensure it ends with /
+        if [[ "$backup_entry" != */ ]]; then
+          backup_entry="$backup_entry/"
+        fi
+        
+        # Check if path is already in backup file
+        if grep -Fxq "$backup_entry" "$JUVY_BACKUP" 2>/dev/null; then
+          print "ℹ️  Path already in backup list: $backup_entry"
+          continue
+        fi
+        
+        # Check for sensitive files (unless --force is used)
+        if [[ "$force_flag" != "true" ]] && _juvy_is_sensitive_file "$backup_entry"; then
+          if ! _juvy_show_security_warning "$backup_entry"; then
+            print "❌ Skipped adding sensitive directory: $path"
             continue
           fi
         fi
-      fi
-      
-      # For directories, check size and prompt if needed
-      if [[ -d "$full_path" ]]; then
+        
+        # For directories, check size and prompt if needed
         if _juvy_calculate_directory_info "$path"; then
           # Check if directory is larger than 100MB (104857600 bytes)
           if (( JUVY_DIR_SIZE_BYTES > 104857600 )); then
@@ -650,11 +804,35 @@ _juvy_add() {
             fi
           fi
         fi
+        
+        print "$backup_entry" >> "$JUVY_BACKUP"
+        print "✅ Added directory '$backup_entry' to backup list"
+        
+      elif [[ -f "$full_path" ]]; then
+        # File - ensure it doesn't end with /
+        backup_entry="${backup_entry%/}"
+        
+        # Check if path is already in backup file
+        if grep -Fxq "$backup_entry" "$JUVY_BACKUP" 2>/dev/null; then
+          print "ℹ️  Path already in backup list: $backup_entry"
+          continue
+        fi
+        
+        # Check for sensitive files (unless --force is used)
+        if [[ "$force_flag" != "true" ]] && _juvy_is_sensitive_file "$backup_entry"; then
+          if ! _juvy_show_security_warning "$backup_entry"; then
+            print "❌ Skipped adding sensitive file: $path"
+            continue
+          fi
+        fi
+        
+        print "$backup_entry" >> "$JUVY_BACKUP"
+        print "✅ Added file '$backup_entry' to backup list"
+        
+      else
+        print "❌ Path not found: $path" >&2
+        continue
       fi
-      
-      # Add to backup file
-      print "$normalized_path" >> "$JUVY_BACKUP"
-      print "✅ Added '$normalized_path' to backup list"
     done
   fi
 }
@@ -666,10 +844,13 @@ _juvy_help() {
   print ""
   print "Commands:"
   print "  init        Initialize juvy configuration"
-  print "  add         Add files to backup list (or edit with \$EDITOR)"
+  print "  add         Add files/directories to backup list (or edit with \$EDITOR)"
+  print "              Files: 'add ~/.zshrc' or 'add /path/to/file'"
+  print "              Directories: 'add ~/.config/nvim/' (trailing slash auto-added)"
   print "              Validates paths and warns about large directories (>100MB)"
   print "              Detects sensitive files (SSH keys, certificates, etc.)"
-  print "  backup      Backup files to configured directory"
+  print "              Use 'add --force <path>' to bypass security warnings"
+  print "  backup      Backup files and directories to configured directory"
   print "  check       Validate backup file without running backup"
   print "  git         Run git commands in backup directory"
   print "  update      Update juvy to the latest version"
