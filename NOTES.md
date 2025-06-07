@@ -231,7 +231,7 @@ Current simple text format works but could be enhanced:
 /.zshrc                      # File relative to $HOME
 /.config/nvim/               # Directory (recursive)
 /.ssh/config -> 600          # With permission hints
-@/etc/hosts                  # Absolute path
+/etc/hosts                   # Absolute path
 !*.log                       # Exclusion pattern
 ```
 

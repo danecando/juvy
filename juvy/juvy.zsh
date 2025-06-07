@@ -233,10 +233,6 @@ _juvy_resolve_backup_path() {
       # Explicit home-relative: ~/path -> $HOME/path
       resolved_path="${HOME}${entry#\~}"
       ;;
-    (@/*)
-      # Absolute path with @ prefix: @/etc/hosts -> /etc/hosts  
-      resolved_path="${entry#@}"
-      ;;
     (/*)
       # Absolute path: /etc/hosts -> /etc/hosts
       resolved_path="$entry"
