@@ -19,6 +19,10 @@ juvy() {
     "rm")
       _juvy_rm $@
       ;;
+    "add")
+      shift
+      _juvy_add $@
+      ;;
     "backup")
       _juvy_backup $@
       ;;
@@ -140,7 +144,13 @@ _juvy_update() {
     return 1
   fi
   
-  local latest_version=$(grep "JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
+  local latest_version=$(grep "^JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
+  
+  if [[ -z "$latest_version" ]]; then
+    print "❌ Failed to extract version from downloaded script" >&2
+    rm -f "$temp_script"
+    return 1
+  fi
   
   if [[ "$latest_version" == "$JUVY_VERSION" ]]; then
     print "✅ juvy is already up to date (v$JUVY_VERSION)"
@@ -221,6 +231,30 @@ _juvy_rm_internal() {
   fi
 }
 
+_juvy_add() {
+  if ! [[ -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  if [[ $# -eq 0 ]]; then
+    # No arguments, open in editor
+    local editor="${EDITOR:-nano}"
+    if command -v "$editor" &> /dev/null; then
+      "$editor" "$JUVY_BACKUP"
+    else
+      print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
+      return 1
+    fi
+  else
+    # Arguments provided, append to file
+    for arg in "$@"; do
+      print "$arg" >> "$JUVY_BACKUP"
+      print "✅ Added '$arg' to backup list"
+    done
+  fi
+}
+
 _juvy_help() {
   print "juvy $JUVY_VERSION - dotfile backup utility"
   print ""
@@ -228,6 +262,7 @@ _juvy_help() {
   print ""
   print "Commands:"
   print "  init      Initialize juvy configuration"
+  print "  add       Add files to backup list (or edit with \$EDITOR)"
   print "  backup    Backup files to configured directory"
   print "  git       Run git commands in backup directory"
   print "  update    Update juvy to the latest version"
