@@ -1,0 +1,123 @@
+name: Test juvy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up zsh
+        run: |
+          # Ensure zsh is available and set as shell
+          which zsh
+          zsh --version
+
+      - name: Test script syntax
+        run: |
+          # Test that the script has valid zsh syntax
+          zsh -n juvy/juvy.zsh
+
+      - name: Test basic commands
+        run: |
+          # Source the script and test basic functionality
+          source juvy/juvy.zsh
+          
+          # Test version command
+          juvy version
+          
+          # Test help command  
+          juvy
+          
+          # Test invalid command handling
+          if juvy invalid-command 2>&1 | grep -q "Unknown command"; then
+            echo "✅ Invalid command handling works"
+          else
+            echo "❌ Invalid command handling failed"
+            exit 1
+          fi
+
+      - name: Test init functionality
+        run: |
+          source juvy/juvy.zsh
+          
+          # Test init with default settings
+          printf "\n" | juvy init
+          
+          # Verify config files were created
+          [[ -f ~/.config/juvy/config ]] || exit 1
+          [[ -f ~/.config/juvy/backup ]] || exit 1
+          
+          echo "✅ Init functionality works"
+
+      - name: Test add functionality
+        run: |
+          source juvy/juvy.zsh
+          
+          # Create a test file
+          echo "test content" > ~/test.txt
+          
+          # Add it to backup list
+          juvy add ~/test.txt
+          
+          # Verify it was added
+          if grep -q "test.txt" ~/.config/juvy/backup; then
+            echo "✅ Add functionality works"
+          else
+            echo "❌ Add functionality failed"
+            exit 1
+          fi
+
+      - name: Test backup functionality
+        run: |
+          source juvy/juvy.zsh
+          
+          # Ensure we have a clean test environment
+          printf "\n" | juvy init
+          
+          # Create test files
+          echo "zshrc content" > ~/.zshrc
+          echo "gitconfig content" > ~/.gitconfig
+          
+          # Run backup
+          juvy backup
+          
+          # Verify backup directory exists and has files
+          backup_dir=$(grep "JUVY_BACKUP_DIR=" ~/.config/juvy/config | cut -d= -f2)
+          [[ -f "$backup_dir/.zshrc" ]] || exit 1
+          [[ -f "$backup_dir/.gitconfig" ]] || exit 1
+          
+          echo "✅ Backup functionality works"
+
+  test-ubuntu-zsh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install zsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh
+
+      - name: Test cross-platform syntax
+        run: |
+          # Test that the script works with different zsh versions
+          zsh -n juvy/juvy.zsh
+          echo "✅ Script syntax is valid on Ubuntu zsh"
+
+      - name: Test basic commands on Ubuntu
+        run: |
+          source juvy/juvy.zsh
+          
+          # Test basic commands work cross-platform
+          juvy version
+          juvy
+          
+          echo "✅ Basic commands work on Ubuntu"
