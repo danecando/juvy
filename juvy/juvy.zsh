@@ -73,7 +73,7 @@ _juvy_init() {
   fi
 
   if [[ ! -f "$JUVY_BACKUP" ]]; then
-    print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
+    _juvy_init_smart_defaults
   fi
 
   if [[ ! -f "$JUVY_CONFIG" ]]; then
@@ -103,6 +103,189 @@ _juvy_init_backups() {
 
   if [[ ! -d "$JUVY_BACKUP_DIR/.git" ]]; then
     git init -b main "$JUVY_BACKUP_DIR"
+  fi
+}
+
+_juvy_init_smart_defaults() {
+  local -a found_files recommended_files sensitive_files
+  local -a all_patterns recommended_patterns sensitive_patterns
+  local choice
+  
+  # Define dotfile patterns to search for
+  all_patterns=(
+    # Shell configs
+    "/.zshrc" "/.bashrc" "/.profile" "/.bash_profile"
+    # Git
+    "/.gitconfig" "/.gitignore_global" "/.gitignore"
+    # SSH (sensitive)
+    "/.ssh/config" "/.ssh/known_hosts"
+    # Editors
+    "/.vimrc" "/.config/nvim/"
+    "/.emacs" "/.emacs.d/"
+    # Terminal
+    "/.tmux.conf" "/.alacritty.yml" "/.alacritty.toml"
+    # Tools
+    "/.config/gh/" "/.aws/config" "/.npmrc"
+  )
+  
+  recommended_patterns=(
+    "/.zshrc" "/.bashrc" "/.profile" "/.bash_profile"
+    "/.gitconfig" "/.gitignore_global" "/.gitignore"
+    "/.vimrc" "/.config/nvim/"
+    "/.emacs" "/.emacs.d/"
+    "/.tmux.conf" "/.alacritty.yml" "/.alacritty.toml"
+    "/.npmrc"
+  )
+  
+  sensitive_patterns=(
+    "/.ssh/config" "/.ssh/known_hosts"
+    "/.config/gh/" "/.aws/config"
+  )
+  
+  print "🔍 Scanning for common dotfiles..."
+  print ""
+  
+  # Scan for existing files
+  for pattern in "${all_patterns[@]}"; do
+    local full_path="$HOME$pattern"
+    if [[ -e "$full_path" ]]; then
+      found_files+=("$pattern")
+      
+      if (( ${recommended_patterns[(Ie)$pattern]} )); then
+        recommended_files+=("$pattern")
+      fi
+      
+      if (( ${sensitive_patterns[(Ie)$pattern]} )); then
+        sensitive_files+=("$pattern")
+      fi
+    fi
+  done
+  
+  if (( ${#found_files[@]} == 0 )); then
+    print "No common dotfiles found. Creating basic backup list..."
+    print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
+    return 0
+  fi
+  
+  # Display found files
+  print "Found these files you might want to backup:"
+  print ""
+  
+  for file in "${found_files[@]}"; do
+    local file_status="○"
+    local warning=""
+    
+    if (( ${recommended_files[(Ie)$file]} )); then
+      file_status="✓"
+    fi
+    
+    if (( ${sensitive_files[(Ie)$file]} )); then
+      warning=" ⚠️ contains sensitive data"
+    fi
+    
+    local full_path="$HOME$file"
+    local file_type="(config)"
+    
+    if [[ -d "$full_path" ]]; then
+      file_type="(directory)"
+    elif [[ "$file" == *"rc" || "$file" == *"profile" ]]; then
+      file_type="(shell config)"
+    elif [[ "$file" == *"git"* ]]; then
+      file_type="(git config)"
+    elif [[ "$file" == *"vim"* || "$file" == *"emacs"* ]]; then
+      file_type="(editor config)"
+    elif [[ "$file" == *"ssh"* ]]; then
+      file_type="(ssh config)"
+    elif [[ "$file" == *"tmux"* || "$file" == *"alacritty"* ]]; then
+      file_type="(terminal config)"
+    fi
+    
+    printf "  %s %s %s%s\\n" "$file_status" "$file" "$file_type" "$warning"
+  done
+  
+  print ""
+  print "Select files to track:"
+  print "  a) All files"
+  print "  r) Recommended only (non-sensitive)"
+  print "  c) Choose individually"
+  print "  s) Skip - I'll add manually"
+  print ""
+  print -n "Choice [a/r/c/s]: "
+  read -r "choice?"
+  
+  case "$choice" in
+    (a|A)
+      _juvy_add_files_to_backup "${found_files[@]}"
+      print "✅ Added all found files to backup list"
+      ;;
+    (r|R)
+      if (( ${#recommended_files[@]} > 0 )); then
+        _juvy_add_files_to_backup "${recommended_files[@]}"
+        print "✅ Added recommended files to backup list"
+      else
+        print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
+        print "✅ Created basic backup list"
+      fi
+      ;;
+    (c|C)
+      _juvy_interactive_file_selection "${found_files[@]}"
+      ;;
+    (s|S|*)
+      print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
+      print "✅ Created basic backup list"
+      print "💡 Use 'juvy add <path>' to add files later"
+      ;;
+  esac
+}
+
+_juvy_add_files_to_backup() {
+  local file
+  for file in "$@"; do
+    # Add trailing slash for directories
+    local full_path="$HOME$file"
+    if [[ -d "$full_path" && "$file" != */ ]]; then
+      file="$file/"
+    fi
+    print "$file" >> "$JUVY_BACKUP"
+  done
+}
+
+_juvy_interactive_file_selection() {
+  local -a selected_files
+  local file response
+  
+  print ""
+  print "Select files individually (y/n for each):"
+  print ""
+  
+  for file in "$@"; do
+    local full_path="$HOME$file"
+    local warning=""
+    local file_type="config"
+    
+    if [[ -d "$full_path" ]]; then
+      file_type="directory"
+    fi
+    
+    # Check if sensitive
+    if _juvy_is_sensitive_file "$file"; then
+      warning=" ⚠️ sensitive"
+    fi
+    
+    print -n "  Include $file ($file_type)$warning? [y/N] "
+    read -r "response?"
+    
+    if [[ "$response" == "y" || "$response" == "Y" ]]; then
+      selected_files+=("$file")
+    fi
+  done
+  
+  if (( ${#selected_files[@]} > 0 )); then
+    _juvy_add_files_to_backup "${selected_files[@]}"
+    print "✅ Added ${#selected_files[@]} files to backup list"
+  else
+    print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
+    print "✅ Created basic backup list"
   fi
 }
 
