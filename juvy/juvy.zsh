@@ -353,13 +353,76 @@ _juvy_uninstall_internal() {
   fi
 }
 
+_juvy_is_sensitive_file() {
+  local file="$1"
+  local -a sensitive_patterns
+  
+  sensitive_patterns=(
+    "*id_rsa*" "*id_ed25519*" "*id_ecdsa*"  # SSH keys
+    "*.pem" "*.key" "*.cert"                 # Certificates
+    "*credentials*" "*token*" "*secret*"     # Credentials
+    "*.env" ".env.*"                         # Environment files
+    "*auth*" "*passwd*"                      # Auth files
+  )
+  
+  local pattern
+  for pattern in "${sensitive_patterns[@]}"; do
+    if [[ "${file:t}" == ${~pattern} ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+_juvy_show_security_warning() {
+  local file="$1"
+  local choice
+  
+  print "🔒 Security Warning: This appears to be a sensitive file"
+  print "   File: $file"
+  print ""
+  print "Backing up to cloud storage may expose sensitive data."
+  print "Options:"
+  print "  1) Cancel (recommended)"
+  print "  2) Continue anyway"
+  print ""
+  print -n "Choice [1-2]: "
+  read -r "choice?"
+  
+  case "$choice" in
+    (2)
+      return 0
+      ;;
+    (*)
+      return 1
+      ;;
+  esac
+}
+
 _juvy_add() {
+  local force_flag=0
+  local -a files_to_add
+  
+  # Parse arguments for --force flag
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      (--force)
+        force_flag=1
+        shift
+        ;;
+      (*)
+        files_to_add+=("$1")
+        shift
+        ;;
+    esac
+  done
+  
   if [[ ! -f "$JUVY_BACKUP" ]]; then
     print "❌ Backup file not found. Run 'juvy init' first." >&2
     return 1
   fi
   
-  if [[ $# -eq 0 ]]; then
+  if [[ ${#files_to_add[@]} -eq 0 ]]; then
     # No arguments, open in editor
     local editor="${EDITOR:-nano}"
     if (( $+commands[$editor] )); then
@@ -369,10 +432,19 @@ _juvy_add() {
       return 1
     fi
   else
-    # Arguments provided, append to file
-    for arg in "$@"; do
-      print "$arg" >> "$JUVY_BACKUP"
-      print "✅ Added '$arg' to backup list"
+    # Arguments provided, check for sensitive files and append to file
+    local file
+    for file in "${files_to_add[@]}"; do
+      # Check if file is sensitive (unless forced)
+      if [[ $force_flag -eq 0 ]] && _juvy_is_sensitive_file "$file"; then
+        if ! _juvy_show_security_warning "$file"; then
+          print "❌ Cancelled adding '$file'"
+          continue
+        fi
+      fi
+      
+      print "$file" >> "$JUVY_BACKUP"
+      print "✅ Added '$file' to backup list"
     done
   fi
 }
@@ -385,6 +457,7 @@ _juvy_help() {
   print "Commands:"
   print "  init        Initialize juvy configuration"
   print "  add         Add files to backup list (or edit with \$EDITOR)"
+  print "              Use 'add --force <file>' to bypass security warnings"
   print "  backup      Backup files to configured directory"
   print "  git         Run git commands in backup directory"
   print "  update      Update juvy to the latest version"
