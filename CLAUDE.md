@@ -4,30 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-juvy is a simple dot/config file backup utility for macOS that uses rsync to backup files to a specified directory (default: iCloud Drive). The entire codebase consists of a single zsh script that provides commands for initialization, backup, and cleanup.
+juvy is a single zsh script dotfile backup utility. Core architecture: rsync for file copying + git for version control.
 
-## Architecture
+## Key Architecture Details
 
-The project is a single zsh script (`juvy.zsh`) that:
-- Maintains configuration in `$HOME/.config/juvy/`
-- Uses rsync to backup files listed in `$HOME/.config/juvy/backup`
-- Stores backups in a git repository (default: `$HOME/Library/Mobile Documents/com~apple~CloudDocs/juvy`)
-- Automatically commits changes with timestamps
+- Single zsh script at `juvy/juvy.zsh`
+- Configuration in `$HOME/.config/juvy/` (config file + backup list)
+- Backups stored in git repo (default: iCloud Drive)
+- Function namespace: `_juvy_` prefix for all internal functions
+- Main dispatcher: `juvy()` function with case statement
 
-## Key Functions
+## Critical Code Patterns
 
-- `juvy()`: Main entry point that dispatches to subcommands
-- `_juvy_init()`: Sets up config directory and files
-- `_juvy_backup()`: Performs rsync backup and git commit
-- `_juvy_rm()`: Removes config and backup directories
-- `_juvy_git()`: Wrapper for git commands in backup directory
+- Uses `emulate -L zsh` for consistent behavior
+- `rsync -a --files-from="$JUVY_BACKUP" "$HOME" "$JUVY_BACKUP_DIR"`
+- Git commits only when changes exist: `git status --porcelain`
+- Default backup dir: `$HOME/Library/Mobile Documents/com~apple~CloudDocs/juvy`
+- Config files: relative paths from $HOME (e.g., `/.zshrc`)
 
-## Development Notes
+## Common Operations
 
-- The script uses `emulate -L zsh` for consistent zsh behavior
-- Default backup location uses escaped spaces for iCloud path
-- Git repository is initialized in the backup directory during first run
-- Commits only occur when there are actual changes (checked via `git status --porcelain`)
+- **Add command dispatch**: Add new case in `juvy()` function
+- **New function**: Use `_juvy_` prefix, declare `local` variables
+- **File operations**: Always check existence with `[[ -f "$file" ]]`
+- **Error handling**: Print to stderr with `>&2`, return non-zero codes
 
 ## Zsh Manual Reference
 
