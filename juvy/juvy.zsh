@@ -46,6 +46,16 @@ juvy() {
     (restore)
       _juvy_restore "$@"
       ;;
+    (list)
+      _juvy_list "$@"
+      ;;
+    (status)
+      _juvy_status "$@"
+      ;;
+    (diff)
+      shift
+      _juvy_diff "$@"
+      ;;
     (*)
       if [[ -z $1 ]]; then
         _juvy_help
@@ -1063,6 +1073,287 @@ _juvy_perform_restore() {
   return 0
 }
 
+_juvy_list() {
+  local total_files=0 total_dirs=0 total_size=0
+  local entry source_path file_size file_date display_size file_count
+  
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  if [[ ! -s "$JUVY_BACKUP" ]]; then
+    print "📋 No files are currently tracked."
+    print "   Use 'juvy add <path>' to add files or directories."
+    return 0
+  fi
+  
+  print "📋 Tracked Files and Directories:"
+  print ""
+  
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}" 
+    [[ -z "$entry" ]] && continue
+    
+    source_path="$HOME$entry"
+    
+    if [[ "$entry" == */ ]]; then
+      if [[ -d "$source_path" ]]; then
+        if _juvy_calculate_directory_info "$entry"; then
+          file_count="$JUVY_DIR_FILE_COUNT"
+          display_size="$JUVY_DIR_SIZE_HUMAN"
+          total_size=$((total_size + JUVY_DIR_SIZE_BYTES))
+          (( total_dirs++ ))
+        else
+          file_count="?"
+          display_size="?"
+        fi
+        
+        if [[ -d "$source_path" ]]; then
+          file_date="$(stat -c '%y' "$source_path" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1)"
+          [[ -z "$file_date" ]] && file_date="Unknown"
+        else
+          file_date="Missing"
+        fi
+        
+        printf "  📁 %-30s %8s  %s (%s files)\\n" "~$entry" "$display_size" "$file_date" "$file_count"
+      else
+        printf "  ❌ %-30s %8s  %s (missing)\\n" "~$entry" "-" "-"
+      fi
+    else
+      if [[ -f "$source_path" ]]; then
+        file_size="$(du -h "$source_path" 2>/dev/null | cut -f1)"
+        [[ -z "$file_size" ]] && file_size="0B"
+        
+        file_date="$(stat -c '%y' "$source_path" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1)"
+        [[ -z "$file_date" ]] && file_date="Unknown"
+        
+        total_size=$((total_size + $(stat -c '%s' "$source_path" 2>/dev/null || echo 0)))
+        (( total_files++ ))
+        
+        printf "  📄 %-30s %8s  %s\\n" "~$entry" "$file_size" "$file_date"
+      else
+        printf "  ❌ %-30s %8s  %s (missing)\\n" "~$entry" "-" "-"
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  print ""
+  if (( total_size >= 1073741824 )); then
+    display_size="$(( total_size / 1073741824 )).$(( (total_size % 1073741824) / 107374182 ))GB"
+  elif (( total_size >= 1048576 )); then
+    display_size="$(( total_size / 1048576 )).$(( (total_size % 1048576) / 104857 ))MB"
+  elif (( total_size >= 1024 )); then
+    display_size="$(( total_size / 1024 ))KB"
+  else
+    display_size="${total_size}B"
+  fi
+  
+  print "📊 Summary: $((total_files + total_dirs)) items tracked, ~$display_size total"
+}
+
+_juvy_status() {
+  local last_backup_date last_backup_relative changes_output
+  
+  if [[ ! -d "$JUVY_BACKUP_DIR" ]]; then
+    print "❌ Backup directory not found: $JUVY_BACKUP_DIR" >&2
+    print "   Run 'juvy init' to set up backup directory" >&2
+    return 1
+  fi
+  
+  if [[ ! -d "$JUVY_BACKUP_DIR/.git" ]]; then
+    print "❌ Backup directory is not a git repository" >&2
+    print "   Run 'juvy init' to initialize git repository" >&2
+    return 1
+  fi
+  
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  last_backup_date="$(_juvy_git log -1 --format='%cd' --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null)"
+  
+  if [[ -n "$last_backup_date" ]]; then
+    last_backup_relative="$(_juvy_get_relative_time "$last_backup_date")"
+    print "✅ Last backup: $last_backup_date ($last_backup_relative)"
+  else
+    print "⚠️  No backup history found"
+  fi
+  
+  print ""
+  
+  changes_output="$(_juvy_git status --porcelain 2>/dev/null)"
+  
+  if [[ -z "$changes_output" ]]; then
+    print "✅ No changes since last backup"
+    return 0
+  fi
+  
+  print "📝 Changes since last backup:"
+  
+  local status_prefix file_path display_path
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    
+    status_prefix="${line:0:2}"
+    file_path="${line:3}"
+    
+    if [[ "$file_path" == /* ]]; then
+      display_path="~$file_path"
+    else
+      display_path="~/$file_path"
+    fi
+    
+    case "$status_prefix" in
+      (" M"|"M ")
+        print "  📝 $display_path (modified)"
+        ;;
+      (" A"|"A ")
+        print "  ✅ $display_path (added)"
+        ;;
+      (" D"|"D ")
+        print "  ❌ $display_path (deleted)"
+        ;;
+      ("??") 
+        if _juvy_is_tracked_path "$file_path"; then
+          print "  📝 $display_path (modified)"
+        else
+          print "  ❓ $display_path (not tracked - use 'juvy add')"
+        fi
+        ;;
+      (*)
+        print "  📝 $display_path (changed)"
+        ;;
+    esac
+  done <<< "$changes_output"
+  
+  print ""
+  print "💡 Run 'juvy backup' to save changes"
+  print "💡 Run 'juvy diff [file]' for detailed changes"
+}
+
+_juvy_diff() {
+  local file_arg="$1"
+  local backup_file_path source_file_path
+  
+  if [[ ! -d "$JUVY_BACKUP_DIR" ]]; then
+    print "❌ Backup directory not found: $JUVY_BACKUP_DIR" >&2
+    return 1
+  fi
+  
+  if [[ ! -d "$JUVY_BACKUP_DIR/.git" ]]; then
+    print "❌ Backup directory is not a git repository" >&2
+    return 1
+  fi
+  
+  if [[ -n "$file_arg" ]]; then
+    if [[ "$file_arg" == ~* ]]; then
+      source_file_path="${file_arg/#\~/$HOME}"
+      backup_file_path="$JUVY_BACKUP_DIR${file_arg/#\~}"
+    elif [[ "$file_arg" == /* ]]; then
+      if [[ "$file_arg" == "$HOME"* ]]; then
+        source_file_path="$file_arg"
+        backup_file_path="$JUVY_BACKUP_DIR${file_arg#$HOME}"
+      else
+        print "❌ File must be within home directory: $file_arg" >&2
+        return 1
+      fi
+    else
+      source_file_path="$PWD/$file_arg"
+      if [[ "$source_file_path" == "$HOME"* ]]; then
+        backup_file_path="$JUVY_BACKUP_DIR${source_file_path#$HOME}"
+      else
+        print "❌ File must be within home directory: $file_arg" >&2
+        return 1
+      fi
+    fi
+    
+    if [[ ! -f "$backup_file_path" ]]; then
+      print "❌ File not found in backup: $file_arg" >&2
+      print "   Use 'juvy add $file_arg' to track this file" >&2
+      return 1
+    fi
+    
+    if [[ ! -f "$source_file_path" ]]; then
+      print "❌ Source file not found: $file_arg" >&2
+      return 1
+    fi
+    
+    local last_backup_date
+    last_backup_date="$(_juvy_git log -1 --format='%cd' --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null)"
+    [[ -z "$last_backup_date" ]] && last_backup_date="Unknown"
+    
+    print "📄 Comparing: $file_arg"
+    print "   Backup: $last_backup_date"
+    print "   Current: $(stat -c '%y' "$source_file_path" 2>/dev/null | cut -d'.' -f1 || echo 'Unknown')"
+    print ""
+    
+    if diff -u "$backup_file_path" "$source_file_path" 2>/dev/null; then
+      print "✅ No differences found"
+    fi
+  else
+    print "📋 All differences since last backup:"
+    print ""
+    
+    if ! _juvy_git diff --no-index --exit-code 2>/dev/null >/dev/null; then
+      _juvy_git diff --no-index 2>/dev/null || {
+        print "💡 Use 'juvy diff <file>' to see changes for a specific file"
+        print "💡 Use 'juvy status' to see which files have changed"
+      }
+    else
+      print "✅ No differences found"
+    fi
+  fi
+}
+
+_juvy_get_relative_time() {
+  local backup_date="$1"
+  local backup_epoch current_epoch diff_seconds
+  
+  if ! backup_epoch="$(date -d "$backup_date" +%s 2>/dev/null)"; then
+    echo "unknown time ago"
+    return
+  fi
+  
+  current_epoch="$(date +%s)"
+  diff_seconds=$((current_epoch - backup_epoch))
+  
+  if (( diff_seconds < 60 )); then
+    echo "${diff_seconds} seconds ago"
+  elif (( diff_seconds < 3600 )); then
+    echo "$((diff_seconds / 60)) minutes ago"
+  elif (( diff_seconds < 86400 )); then
+    echo "$((diff_seconds / 3600)) hours ago"
+  else
+    echo "$((diff_seconds / 86400)) days ago"
+  fi
+}
+
+_juvy_is_tracked_path() {
+  local file_path="$1"
+  local entry
+  
+  [[ ! -f "$JUVY_BACKUP" ]] && return 1
+  
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] && continue
+    
+    if [[ "$file_path" == "$entry" ]] || [[ "$file_path" == ${entry%/}* && "$entry" == */ ]]; then
+      return 0
+    fi
+  done < "$JUVY_BACKUP"
+  
+  return 1
+}
+
 _juvy_help() {
   print "juvy $JUVY_VERSION - dotfile backup utility"
   print ""
@@ -1078,6 +1369,9 @@ _juvy_help() {
   print "              Use 'add --force <path>' to bypass security warnings"
   print "  backup      Backup files and directories to configured directory"
   print "  restore     Restore all files from latest backup"
+  print "  list        Show all tracked files and directories"
+  print "  status      Show changes since last backup"
+  print "  diff        Show detailed file differences (git diff)"
   print "  check       Validate backup file without running backup"
   print "  git         Run git commands in backup directory"
   print "  update      Update juvy to the latest version"
