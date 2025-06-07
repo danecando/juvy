@@ -1,11 +1,11 @@
 emulate -L zsh
 
 JUVY_VERSION="1.0.1"
-JUVY_CONFIG_DIR=$HOME/.config/juvy
-JUVY_CONFIG=$JUVY_CONFIG_DIR/config
-JUVY_BACKUP=$JUVY_CONFIG_DIR/backup
+JUVY_CONFIG_DIR="$HOME/.config/juvy"
+JUVY_CONFIG="$JUVY_CONFIG_DIR/config"
+JUVY_BACKUP="$JUVY_CONFIG_DIR/backup"
 
-if [[ -f $JUVY_CONFIG ]]; then
+if [[ -f "$JUVY_CONFIG" ]]; then
   source "$JUVY_CONFIG"
 fi
 
@@ -13,33 +13,33 @@ fi
 
 juvy() {
   case $1 in
-    "init")
-      _juvy_init $@
+    (init)
+      _juvy_init "$@"
       ;;
-    "rm")
-      _juvy_rm $@
+    (uninstall)
+      _juvy_uninstall "$@"
       ;;
-    "add")
+    (add)
       shift
-      _juvy_add $@
+      _juvy_add "$@"
       ;;
-    "backup")
-      _juvy_backup $@
+    (backup)
+      _juvy_backup "$@"
       ;;
-    "version"|"--version"|"-v")
+    (version|--version|-v)
       print "juvy $JUVY_VERSION"
       ;;
-    "git")
+    (git)
       shift
-      _juvy_git $@
+      _juvy_git "$@"
       ;;
-    "update")
-      _juvy_update $@
+    (update)
+      _juvy_update "$@"
       ;;
-    "nuke")
-      _juvy_nuke $@
+    (nuke)
+      _juvy_nuke "$@"
       ;;
-    *)
+    (*)
       if [[ -z $1 ]]; then
         _juvy_help
       else
@@ -51,43 +51,47 @@ juvy() {
 }
 
 _juvy_init() {
-  if ! [[ -d $JUVY_CONFIG_DIR ]]; then
-    mkdir -p $JUVY_CONFIG_DIR > /dev/null 2>&1
+  if [[ ! -d "$JUVY_CONFIG_DIR" ]]; then
+    mkdir -p "$JUVY_CONFIG_DIR" > /dev/null 2>&1
   fi
 
-  if ! [[ -f $JUVY_BACKUP ]]; then
-    print "/.zshrc\n/.gitconfig" >> $JUVY_BACKUP
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "/.zshrc\n/.gitconfig" >> "$JUVY_BACKUP"
   fi
 
-  if ! [[ -f $JUVY_CONFIG ]]; then
-    touch $JUVY_CONFIG
+  if [[ ! -f "$JUVY_CONFIG" ]]; then
+    touch "$JUVY_CONFIG"
   fi
 
   _juvy_init_backups
 }
 
 _juvy_init_backups() { 
-  if  [[ -z $(grep "JUVY_BACKUP_DIR=" $JUVY_CONFIG) ]]; then
-    printf "juvy: Where do you want backups to be stored? (enter for default: %s)" $JUVY_BACKUP_DIR
+  local dir
+  
+  if ! grep -q "JUVY_BACKUP_DIR=" "$JUVY_CONFIG" 2>/dev/null; then
+    printf "juvy: Where do you want backups to be stored? (enter for default: %s) " "$JUVY_BACKUP_DIR"
     read -r "dir?"
 
     if [[ -n $dir ]]; then
-      if mkdir -p $dir > /dev/null 2>&1; then
-        JUVY_BACKUP_DIR=$dir
+      if mkdir -p "$dir" > /dev/null 2>&1; then
+        JUVY_BACKUP_DIR="$dir"
       else
-        printf "juvy: Unable to create backup directory (%s). Falling back to default (%)" $dir $JUVY_BACKUP_DIR
+        printf "juvy: Unable to create backup directory (%s). Falling back to default (%s)\n" "$dir" "$JUVY_BACKUP_DIR"
       fi
     fi
 
-    print -r "JUVY_BACKUP_DIR=$(printf %q "$JUVY_BACKUP_DIR")" > $JUVY_CONFIG
+    print -r "JUVY_BACKUP_DIR=$(printf %q "$JUVY_BACKUP_DIR")" > "$JUVY_CONFIG"
   fi 
 
-  if ! [[ -d "$JUVY_BACKUP_DIR/.git" ]]; then
-    git init -b main $JUVY_BACKUP_DIR
+  if [[ ! -d "$JUVY_BACKUP_DIR/.git" ]]; then
+    git init -b main "$JUVY_BACKUP_DIR"
   fi
 }
 
-_juvy_rm() {
+_juvy_uninstall() {
+  local confirm
+  
   print "This will remove juvy from your system (but preserve backups):"
   print "  • Configuration directory: $JUVY_CONFIG_DIR"
   print "  • Installation directory: $HOME/.juvy"
@@ -102,7 +106,7 @@ _juvy_rm() {
     return 0
   fi
   
-  _juvy_rm_internal
+  _juvy_uninstall_internal
   
   print ""
   print "✅ juvy has been removed from your system"
@@ -111,14 +115,14 @@ _juvy_rm() {
 }
 
 _juvy_backup() {
-  if [[ -d $JUVY_BACKUP_DIR ]]; then
+  if [[ -d "$JUVY_BACKUP_DIR" ]]; then
     rsync -a --files-from="$JUVY_BACKUP" "$HOME" "$JUVY_BACKUP_DIR"
     if [[ -n $(_juvy_git status --porcelain) ]]; then
       _juvy_git add .
       _juvy_git commit -m "Backup: $(_juvy_timestamp)"
     fi
   else
-    printf "juvy: Set JUVY_BACKUP_DIR value in %s" $JUVY_CONFIG >&2
+    printf "juvy: Set JUVY_BACKUP_DIR value in %s" "$JUVY_CONFIG" >&2
   fi
 }
 
@@ -127,8 +131,8 @@ _juvy_timestamp() {
 }
 
 _juvy_git() {
-  if [[ -d $JUVY_BACKUP_DIR ]]; then
-    git -C $JUVY_BACKUP_DIR $@
+  if [[ -d "$JUVY_BACKUP_DIR" ]]; then
+    git -C "$JUVY_BACKUP_DIR" "$@"
   fi
 }
 
@@ -136,6 +140,7 @@ _juvy_update() {
   local temp_script="/tmp/juvy_update.zsh"
   local juvy_script="$HOME/.juvy/juvy.zsh"
   local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy/juvy.zsh"
+  local latest_version update
   
   print "Checking for updates..."
   
@@ -144,7 +149,7 @@ _juvy_update() {
     return 1
   fi
   
-  local latest_version=$(grep "^JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
+  latest_version=$(grep "^JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
   
   if [[ -z "$latest_version" ]]; then
     print "❌ Failed to extract version from downloaded script" >&2
@@ -179,6 +184,8 @@ _juvy_update() {
 }
 
 _juvy_nuke() {
+  local confirm
+  
   print "🚨 WARNING: This will COMPLETELY DESTROY all juvy data including:"
   print "  • Configuration directory: $JUVY_CONFIG_DIR"
   print "  • Backup directory: $JUVY_BACKUP_DIR"
@@ -196,7 +203,7 @@ _juvy_nuke() {
   fi
   
   # Call rm function first (removes config, installation, .zshrc)
-  _juvy_rm_internal
+  _juvy_uninstall_internal
   
   # Remove backup directory
   if [[ -d "$JUVY_BACKUP_DIR" ]]; then
@@ -209,7 +216,7 @@ _juvy_nuke() {
   print "ℹ️  Restart your shell or run: source ~/.zshrc"
 }
 
-_juvy_rm_internal() {
+_juvy_uninstall_internal() {
   # Remove configuration directory
   if [[ -d "$JUVY_CONFIG_DIR" ]]; then
     rm -rf "$JUVY_CONFIG_DIR"
@@ -225,14 +232,15 @@ _juvy_rm_internal() {
   # Remove from .zshrc
   if [[ -f "$HOME/.zshrc" ]] && grep -q "source.*\.juvy/juvy\.zsh" "$HOME/.zshrc"; then
     # Create a temporary file without the juvy lines
-    grep -v "source.*\.juvy/juvy\.zsh" "$HOME/.zshrc" | grep -v "# juvy dotfile backup tool" > "$HOME/.zshrc.tmp"
-    mv "$HOME/.zshrc.tmp" "$HOME/.zshrc"
+    {
+      grep -v "source.*\.juvy/juvy\.zsh" "$HOME/.zshrc" | grep -v "# juvy dotfile backup tool"
+    } > "$HOME/.zshrc.tmp" && mv "$HOME/.zshrc.tmp" "$HOME/.zshrc"
     print "🗑️  Removed juvy from .zshrc"
   fi
 }
 
 _juvy_add() {
-  if ! [[ -f "$JUVY_BACKUP" ]]; then
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
     print "❌ Backup file not found. Run 'juvy init' first." >&2
     return 1
   fi
@@ -240,7 +248,7 @@ _juvy_add() {
   if [[ $# -eq 0 ]]; then
     # No arguments, open in editor
     local editor="${EDITOR:-nano}"
-    if command -v "$editor" &> /dev/null; then
+    if (( $+commands[$editor] )); then
       "$editor" "$JUVY_BACKUP"
     else
       print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
@@ -261,12 +269,12 @@ _juvy_help() {
   print "Usage: juvy <command>"
   print ""
   print "Commands:"
-  print "  init      Initialize juvy configuration"
-  print "  add       Add files to backup list (or edit with \$EDITOR)"
-  print "  backup    Backup files to configured directory"
-  print "  git       Run git commands in backup directory"
-  print "  update    Update juvy to the latest version"
-  print "  version   Show version information"
-  print "  rm        Remove juvy from system (preserves backups)"
-  print "  nuke      Completely destroy juvy and all backups"
+  print "  init        Initialize juvy configuration"
+  print "  add         Add files to backup list (or edit with \$EDITOR)"
+  print "  backup      Backup files to configured directory"
+  print "  git         Run git commands in backup directory"
+  print "  update      Update juvy to the latest version"
+  print "  version     Show version information"
+  print "  uninstall   Remove juvy from system (preserves backups)"
+  print "  nuke        Completely destroy juvy and all backups"
 }
