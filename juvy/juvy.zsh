@@ -27,6 +27,9 @@ juvy() {
     (backup)
       _juvy_backup "$@"
       ;;
+    (check)
+      _juvy_check "$@"
+      ;;
     (version|--version|-v)
       print "juvy $JUVY_VERSION"
       ;;
@@ -115,6 +118,61 @@ _juvy_uninstall() {
   print "ℹ️  Restart your shell or run: source ~/.zshrc"
 }
 
+_juvy_validate_backup_file() {
+  local invalid_paths=()
+  local large_paths=()
+  local line_num=0
+  local path full_path
+  
+  print "🔍 Validating backup file..."
+  
+  while IFS= read -r path; do
+    (( line_num++ ))
+    
+    # Skip empty lines and comments
+    [[ -z "$path" || "$path" =~ '^[[:space:]]*#' ]] && continue
+    
+    # Convert to full path for validation
+    if [[ "$path" = /* ]]; then
+      full_path="$HOME$path"
+    else
+      full_path="$HOME/$path"
+    fi
+    
+    if [[ ! -e "$full_path" ]]; then
+      invalid_paths+=("Line $line_num: $path")
+    elif [[ -d "$full_path" ]]; then
+      # Check directory size
+      if _juvy_calculate_directory_info "$path"; then
+        if (( JUVY_DIR_SIZE_BYTES > 104857600 )); then
+          large_paths+=("Line $line_num: $path ($JUVY_DIR_SIZE_HUMAN, $JUVY_DIR_FILE_COUNT files)")
+        fi
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  # Report issues
+  if (( ${#invalid_paths[@]} > 0 )); then
+    print "⚠️  Invalid paths found in backup file:" >&2
+    for invalid in "${invalid_paths[@]}"; do
+      print "   $invalid" >&2
+    done
+    print "   These paths will be skipped during backup" >&2
+    print ""
+  fi
+  
+  if (( ${#large_paths[@]} > 0 )); then
+    print "⚠️  Large directories found in backup file:" >&2
+    for large in "${large_paths[@]}"; do
+      print "   $large" >&2
+    done
+    print "   These may slow down backup and consume significant storage" >&2
+    print ""
+  fi
+  
+  return 0
+}
+
 _juvy_backup() {
   if [[ ! -d "$JUVY_BACKUP_DIR" ]]; then
     printf "juvy: Set JUVY_BACKUP_DIR value in %s\n" "$JUVY_CONFIG" >&2
@@ -127,6 +185,9 @@ _juvy_backup() {
   fi
   
   print "🔄 Starting backup process..."
+  
+  # Validate backup file before starting rsync
+  _juvy_validate_backup_file
   
   # Use enhanced rsync with error handling and retry logic
   if ! _juvy_rsync_with_retry "$HOME" "$JUVY_BACKUP_DIR" "$JUVY_BACKUP"; then
@@ -150,6 +211,16 @@ _juvy_backup() {
   fi
   
   print "✅ Backup completed successfully"
+}
+
+_juvy_check() {
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  _juvy_validate_backup_file
+  print "✅ Backup file validation completed"
 }
 
 _juvy_timestamp() {
@@ -399,52 +470,188 @@ _juvy_show_security_warning() {
   esac
 }
 
-_juvy_add() {
-  local force_flag=0
-  local -a files_to_add
+_juvy_validate_path() {
+  local path="$1"
+  local full_path
   
-  # Parse arguments for --force flag
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      (--force)
-        force_flag=1
-        shift
-        ;;
-      (*)
-        files_to_add+=("$1")
-        shift
-        ;;
-    esac
-  done
+  # Convert to full path for validation
+  if [[ "$path" = /* ]]; then
+    full_path="$path"
+  else
+    # Path relative to HOME (remove leading ./ or /)
+    path="${path#./}"
+    path="${path#/}"
+    full_path="$HOME/$path"
+  fi
+  
+  if [[ ! -e "$full_path" ]]; then
+    print "❌ Path does not exist: $path" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+_juvy_calculate_directory_info() {
+  local path="$1"
+  local full_path
+  local size_bytes size_human file_count
+  
+  # Convert to full path
+  if [[ "$path" = /* ]]; then
+    full_path="$path"
+  else
+    path="${path#./}"
+    path="${path#/}" 
+    full_path="$HOME/$path"
+  fi
+  
+  if [[ ! -d "$full_path" ]]; then
+    return 1
+  fi
+  
+  # Calculate size in bytes using du
+  size_bytes=$(du -sb "$full_path" 2>/dev/null | cut -f1)
+  
+  # Calculate human readable size
+  if (( size_bytes >= 1073741824 )); then
+    size_human="$(( size_bytes / 1073741824 )).$(( (size_bytes % 1073741824) / 107374182 ))GB"
+  elif (( size_bytes >= 1048576 )); then
+    size_human="$(( size_bytes / 1048576 )).$(( (size_bytes % 1048576) / 104857 ))MB"
+  elif (( size_bytes >= 1024 )); then
+    size_human="$(( size_bytes / 1024 ))KB"
+  else
+    size_human="${size_bytes}B"
+  fi
+  
+  # Count files (not directories)
+  file_count=$(find "$full_path" -type f 2>/dev/null | wc -l)
+  
+  # Return values via global variables for zsh compatibility
+  JUVY_DIR_SIZE_BYTES="$size_bytes"
+  JUVY_DIR_SIZE_HUMAN="$size_human"
+  JUVY_DIR_FILE_COUNT="$file_count"
+  
+  return 0
+}
+
+_juvy_prompt_large_directory() {
+  local path="$1"
+  local size_human="$2" 
+  local file_count="$3"
+  local force="$4"
+  local response
+  
+  if [[ "$force" == "true" ]]; then
+    return 0
+  fi
+  
+  print "⚠️  This directory contains:"
+  print "   Files: $file_count"
+  print "   Size: $size_human"
+  print ""
+  print "Large backups may be slow and consume significant storage."
+  print "Continue? [y/N] "
+  read -r "response?"
+  
+  if [[ "$response" != "y" && "$response" != "Y" ]]; then
+    return 1
+  fi
+  
+  return 0
+}
+
+_juvy_add() {
+  local force_flag="false"
+  local paths=()
   
   if [[ ! -f "$JUVY_BACKUP" ]]; then
     print "❌ Backup file not found. Run 'juvy init' first." >&2
     return 1
   fi
   
-  if [[ ${#files_to_add[@]} -eq 0 ]]; then
+  # Parse arguments for --force flag
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      (--force)
+        force_flag="true"
+        shift
+        ;;
+      (-*)
+        print "❌ Unknown flag: $1" >&2
+        print "Usage: juvy add [--force] [path...]" >&2
+        return 1
+        ;;
+      (*)
+        paths+=("$1")
+        shift
+        ;;
+    esac
+  done
+  
+  if [[ ${#paths[@]} -eq 0 ]]; then
     # No arguments, open in editor
     local editor="${EDITOR:-nano}"
     if (( $+commands[$editor] )); then
       "$editor" "$JUVY_BACKUP"
+      print "💡 Consider running 'juvy backup' to validate your backup file"
     else
       print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
       return 1
     fi
   else
-    # Arguments provided, check for sensitive files and append to file
-    local file
-    for file in "${files_to_add[@]}"; do
+    # Arguments provided, validate and append to file
+    for path in "${paths[@]}"; do
+      # Validate path exists
+      if ! _juvy_validate_path "$path"; then
+        continue
+      fi
+      
+      # Convert to normalized path (relative to HOME, no leading slash)
+      local normalized_path="$path"
+      if [[ "$path" = "$HOME"* ]]; then
+        normalized_path="${path#$HOME}"
+      fi
+      normalized_path="${normalized_path#/}"
+      normalized_path="/$normalized_path"
+      
+      # Check if path is already in backup file
+      if grep -Fxq "$normalized_path" "$JUVY_BACKUP" 2>/dev/null; then
+        print "ℹ️  Path already in backup list: $normalized_path"
+        continue
+      fi
+      
       # Check if file is sensitive (unless forced)
-      if [[ $force_flag -eq 0 ]] && _juvy_is_sensitive_file "$file"; then
-        if ! _juvy_show_security_warning "$file"; then
-          print "❌ Cancelled adding '$file'"
+      if [[ "$force_flag" != "true" ]] && _juvy_is_sensitive_file "$path"; then
+        if ! _juvy_show_security_warning "$path"; then
+          print "❌ Cancelled adding '$path'"
           continue
         fi
       fi
       
-      print "$file" >> "$JUVY_BACKUP"
-      print "✅ Added '$file' to backup list"
+      # For directories, check size and prompt if needed
+      local full_path
+      if [[ "$path" = /* ]]; then
+        full_path="$path"
+      else
+        full_path="$HOME/${path#/}"
+      fi
+      
+      if [[ -d "$full_path" ]]; then
+        if _juvy_calculate_directory_info "$path"; then
+          # Check if directory is larger than 100MB (104857600 bytes)
+          if (( JUVY_DIR_SIZE_BYTES > 104857600 )); then
+            if ! _juvy_prompt_large_directory "$path" "$JUVY_DIR_SIZE_HUMAN" "$JUVY_DIR_FILE_COUNT" "$force_flag"; then
+              print "❌ Skipped adding large directory: $path"
+              continue
+            fi
+          fi
+        fi
+      fi
+      
+      # Add to backup file
+      print "$normalized_path" >> "$JUVY_BACKUP"
+      print "✅ Added '$normalized_path' to backup list"
     done
   fi
 }
@@ -457,11 +664,14 @@ _juvy_help() {
   print "Commands:"
   print "  init        Initialize juvy configuration"
   print "  add         Add files to backup list (or edit with \$EDITOR)"
-  print "              Use 'add --force <file>' to bypass security warnings"
   print "  backup      Backup files to configured directory"
+  print "  check       Validate backup file without running backup"
   print "  git         Run git commands in backup directory"
   print "  update      Update juvy to the latest version"
   print "  version     Show version information"
   print "  uninstall   Remove juvy from system (preserves backups)"
   print "  nuke        Completely destroy juvy and all backups"
+  print ""
+  print "Add command options:"
+  print "  --force     Skip confirmation prompts for sensitive files and large directories"
 }
