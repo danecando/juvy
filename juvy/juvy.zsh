@@ -43,6 +43,9 @@ juvy() {
     (nuke)
       _juvy_nuke "$@"
       ;;
+    (restore)
+      _juvy_restore "$@"
+      ;;
     (*)
       if [[ -z $1 ]]; then
         _juvy_help
@@ -837,6 +840,229 @@ _juvy_add() {
   fi
 }
 
+_juvy_restore() {
+  if [[ ! -d "$JUVY_BACKUP_DIR" ]]; then
+    print "❌ Backup directory not found: $JUVY_BACKUP_DIR" >&2
+    print "Run 'juvy init' to set up backup directory" >&2
+    return 1
+  fi
+  
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  if [[ ! -d "$JUVY_BACKUP_DIR/.git" ]]; then
+    print "❌ Backup directory is not a git repository" >&2
+    return 1
+  fi
+  
+  local file_count dir_count total_size last_backup
+  
+  if ! _juvy_show_restore_preview; then
+    print "❌ No files found to restore" >&2
+    return 1
+  fi
+  
+  print ""
+  print "⚠️  Current files will be backed up to ~/.config/juvy/safety-backup/"
+  print ""
+  print -n "Proceed with restore? [Y/n] "
+  local confirm
+  read -r "confirm?"
+  
+  if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
+    print "Restore cancelled"
+    return 0
+  fi
+  
+  print ""
+  print "✓ Creating safety backup..."
+  local safety_backup_path
+  if ! safety_backup_path="$(_juvy_create_safety_backup)"; then
+    print "❌ Failed to create safety backup" >&2
+    return 1
+  fi
+  
+  print "✓ Restoring files..."
+  if ! _juvy_perform_restore; then
+    print "❌ Restore failed" >&2
+    return 1
+  fi
+  
+  print "✓ Setting permissions..."
+  print "✅ Restore complete!"
+  print ""
+  print "💡 To undo: juvy restore \"$safety_backup_path\""
+}
+
+_juvy_show_restore_preview() {
+  local entry file_count=0 dir_count=0 total_files=0
+  local backup_path source_path file_size last_backup
+  
+  last_backup="$(_juvy_git log -1 --format='%cd' --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null)"
+  if [[ -z "$last_backup" ]]; then
+    last_backup="Unknown"
+  fi
+  
+  print "📋 Restore Summary:"
+  
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] && continue
+    
+    backup_path="$JUVY_BACKUP_DIR$entry"
+    
+    if [[ "$entry" == */ ]]; then
+      if [[ -d "$backup_path" ]]; then
+        local dir_file_count
+        dir_file_count=$(find "$backup_path" -type f 2>/dev/null | wc -l)
+        (( total_files += dir_file_count ))
+        (( dir_count++ ))
+      fi
+    else
+      if [[ -f "$backup_path" ]]; then
+        (( total_files++ ))
+        (( file_count++ ))
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  if (( total_files == 0 )); then
+    return 1
+  fi
+  
+  print "   $total_files files will be restored from backup"
+  print "   Last backup: $last_backup"
+  print ""
+  
+  print "Files to restore:"
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] && continue
+    
+    backup_path="$JUVY_BACKUP_DIR$entry"
+    
+    if [[ "$entry" == */ ]]; then
+      if [[ -d "$backup_path" ]]; then
+        local dir_file_count
+        dir_file_count=$(find "$backup_path" -type f 2>/dev/null | wc -l)
+        print "  ~$entry ($dir_file_count files)"
+      fi
+    else
+      if [[ -f "$backup_path" ]]; then
+        file_size=$(du -h "$backup_path" 2>/dev/null | cut -f1)
+        [[ -z "$file_size" ]] && file_size="0B"
+        print "  ~$entry ($file_size)"
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  return 0
+}
+
+_juvy_create_safety_backup() {
+  local timestamp safety_dir entry backup_path source_path dest_path dest_dir
+  
+  timestamp="$(date '+%Y-%m-%d_%H-%M-%S')"
+  safety_dir="$JUVY_CONFIG_DIR/safety-backup/$timestamp"
+  
+  if ! mkdir -p "$safety_dir" > /dev/null 2>&1; then
+    print "❌ Failed to create safety backup directory: $safety_dir" >&2
+    return 1
+  fi
+  
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] && continue
+    
+    source_path="$HOME$entry"
+    
+    if [[ -e "$source_path" ]]; then
+      dest_path="$safety_dir$entry"
+      dest_dir="$(dirname "$dest_path")"
+      
+      if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
+        print "❌ Failed to create safety backup directory: $dest_dir" >&2
+        return 1
+      fi
+      
+      if [[ "$entry" == */ ]]; then
+        if [[ -d "$source_path" ]]; then
+          if ! rsync -a "$source_path" "$dest_dir/" > /dev/null 2>&1; then
+            print "❌ Failed to backup directory: $source_path" >&2
+            return 1
+          fi
+        fi
+      else
+        if [[ -f "$source_path" ]]; then
+          if ! rsync -a "$source_path" "$dest_path" > /dev/null 2>&1; then
+            print "❌ Failed to backup file: $source_path" >&2
+            return 1
+          fi
+        fi
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  print "$safety_dir"
+  return 0
+}
+
+_juvy_perform_restore() {
+  local entry backup_path source_path dest_dir
+  
+  while IFS= read -r entry; do
+    [[ -z "$entry" || "$entry" == \#* ]] && continue
+    
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] && continue
+    
+    backup_path="$JUVY_BACKUP_DIR$entry"
+    source_path="$HOME$entry"
+    
+    if [[ "$entry" == */ ]]; then
+      if [[ -d "$backup_path" ]]; then
+        dest_dir="$(dirname "$source_path")"
+        if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
+          print "❌ Failed to create directory: $dest_dir" >&2
+          return 1
+        fi
+        
+        if ! rsync -a "$backup_path" "$dest_dir/" > /dev/null 2>&1; then
+          print "❌ Failed to restore directory: $entry" >&2
+          return 1
+        fi
+      fi
+    else
+      if [[ -f "$backup_path" ]]; then
+        dest_dir="$(dirname "$source_path")"
+        if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
+          print "❌ Failed to create directory: $dest_dir" >&2
+          return 1
+        fi
+        
+        if ! rsync -a "$backup_path" "$source_path" > /dev/null 2>&1; then
+          print "❌ Failed to restore file: $entry" >&2
+          return 1
+        fi
+      fi
+    fi
+  done < "$JUVY_BACKUP"
+  
+  return 0
+}
+
 _juvy_help() {
   print "juvy $JUVY_VERSION - dotfile backup utility"
   print ""
@@ -851,6 +1077,7 @@ _juvy_help() {
   print "              Detects sensitive files (SSH keys, certificates, etc.)"
   print "              Use 'add --force <path>' to bypass security warnings"
   print "  backup      Backup files and directories to configured directory"
+  print "  restore     Restore all files from latest backup"
   print "  check       Validate backup file without running backup"
   print "  git         Run git commands in backup directory"
   print "  update      Update juvy to the latest version"
