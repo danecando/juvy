@@ -264,8 +264,6 @@ _juvy_parse_backup_entry() {
   local path permissions
   
   # Check for permission hint: ~/.ssh/config -> 600
-  # NOTE: Permission hints are parsed but not yet applied in backup flow
-  # This is planned for future implementation
   if [[ "$entry" == *" -> "* ]]; then
     path="${entry%% -> *}"
     permissions="${entry##* -> }"
@@ -273,6 +271,38 @@ _juvy_parse_backup_entry() {
     print "perms:$permissions"
   else
     print "path:$entry"
+  fi
+}
+
+_juvy_apply_permissions() {
+  local dest_path="$1"
+  local permissions="$2"
+  
+  # Skip if no permissions specified
+  [[ -z "$permissions" ]] && return 0
+  
+  # Validate permission format (octal or symbolic)
+  if [[ "$permissions" =~ ^[0-7]{3,4}$ ]]; then
+    # Octal permissions (e.g., 600, 755, 644)
+    if chmod "$permissions" "$dest_path" 2>/dev/null; then
+      print "🔒 Set permissions $permissions on $(basename "$dest_path")"
+      return 0
+    else
+      print "⚠️  Failed to set permissions $permissions on $dest_path" >&2
+      return 1
+    fi
+  elif [[ "$permissions" =~ ^[ugoa]*[+-=][rwxXst]*$ ]]; then
+    # Symbolic permissions (e.g., u+x, go-w, a=r)
+    if chmod "$permissions" "$dest_path" 2>/dev/null; then
+      print "🔒 Set permissions $permissions on $(basename "$dest_path")"
+      return 0
+    else
+      print "⚠️  Failed to set permissions $permissions on $dest_path" >&2
+      return 1
+    fi
+  else
+    print "⚠️  Invalid permission format: $permissions (use octal like 600 or symbolic like u+x)" >&2
+    return 1
   fi
 }
 
@@ -329,9 +359,10 @@ _juvy_process_backup_entries() {
     local parsed_entry
     parsed_entry="$(_juvy_parse_backup_entry "$entry")"
     
-    # Extract path from parsed entry
-    local clean_path
+    # Extract path and permissions from parsed entry
+    local clean_path perms
     clean_path="$(print "$parsed_entry" | grep '^path:' | cut -d: -f2-)"
+    perms="$(print "$parsed_entry" | grep '^perms:' | cut -d: -f2-)"
     
     # Resolve the actual filesystem path
     source_path="$(_juvy_resolve_backup_path "$clean_path")"
@@ -360,6 +391,11 @@ _juvy_process_backup_entries() {
         return 1
       fi
       
+      # Apply permissions if specified
+      if [[ -n "$perms" ]]; then
+        _juvy_apply_permissions "$dest_dir" "$perms"
+      fi
+      
       (( dir_count++ ))
     else
       # File entry
@@ -383,6 +419,12 @@ _juvy_process_backup_entries() {
       if ! _juvy_rsync_file "$source_path" "$dest_dir/"; then
         print "❌ Failed to backup file: $clean_path" >&2
         return 1
+      fi
+      
+      # Apply permissions if specified
+      if [[ -n "$perms" ]]; then
+        local dest_file="$dest_dir/$(basename "$clean_path")"
+        _juvy_apply_permissions "$dest_file" "$perms"
       fi
       
       (( file_count++ ))
@@ -1446,6 +1488,8 @@ _juvy_help() {
   print "              Directories: 'add ~/.config/nvim/' (with trailing slash)"
   print "              Absolute paths: '/etc/hosts' (may require sudo for backup)"
   print "              Home paths: '~/.zshrc' (recommended for dotfiles)"
+  print "              Permission hints: '~/.ssh/config -> 600' (optional)"
+  print "              Supports octal (600, 755) and symbolic (u+x, go-w) permissions"
   print "              Validates paths and warns about large directories (>100MB)"
   print "              Detects sensitive files (SSH keys, certificates, etc.)"
   print "              Use 'add --force <path>' to bypass security warnings"
