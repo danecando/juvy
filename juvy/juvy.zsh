@@ -4,6 +4,7 @@ JUVY_VERSION="1.0.1"
 JUVY_CONFIG_DIR="$HOME/.config/juvy"
 JUVY_CONFIG="$JUVY_CONFIG_DIR/config"
 JUVY_BACKUP="$JUVY_CONFIG_DIR/backup"
+JUVY_LOG="$JUVY_CONFIG_DIR/log"
 
 if [[ -f "$JUVY_CONFIG" ]]; then
   source "$JUVY_CONFIG"
@@ -115,19 +116,132 @@ _juvy_uninstall() {
 }
 
 _juvy_backup() {
-  if [[ -d "$JUVY_BACKUP_DIR" ]]; then
-    rsync -a --files-from="$JUVY_BACKUP" "$HOME" "$JUVY_BACKUP_DIR"
-    if [[ -n $(_juvy_git status --porcelain) ]]; then
-      _juvy_git add .
-      _juvy_git commit -m "Backup: $(_juvy_timestamp)"
-    fi
-  else
-    printf "juvy: Set JUVY_BACKUP_DIR value in %s" "$JUVY_CONFIG" >&2
+  if [[ ! -d "$JUVY_BACKUP_DIR" ]]; then
+    printf "juvy: Set JUVY_BACKUP_DIR value in %s\n" "$JUVY_CONFIG" >&2
+    return 1
   fi
+  
+  if [[ ! -f "$JUVY_BACKUP" ]]; then
+    print "❌ Backup file not found. Run 'juvy init' first." >&2
+    return 1
+  fi
+  
+  print "🔄 Starting backup process..."
+  
+  # Use enhanced rsync with error handling and retry logic
+  if ! _juvy_rsync_with_retry "$HOME" "$JUVY_BACKUP_DIR" "$JUVY_BACKUP"; then
+    print "❌ Backup failed" >&2
+    return 1
+  fi
+  
+  print "✅ Files synced successfully"
+  
+  # Check if there are changes to commit
+  if [[ -n $(_juvy_git status --porcelain) ]]; then
+    _juvy_git add .
+    if ! _juvy_git commit -m "Backup: $(_juvy_timestamp)"; then
+      print "⚠️  Git commit failed, but files were synced" >&2
+      _juvy_log_error "Git commit failed after successful rsync"
+      return 1
+    fi
+    print "✅ Changes committed to git"
+  else
+    print "ℹ️  No changes to commit"
+  fi
+  
+  print "✅ Backup completed successfully"
 }
 
 _juvy_timestamp() {
   date "+%Y-%m-%d %H:%M:%S"
+}
+
+_juvy_log_error() {
+  local message="$1"
+  local timestamp
+  
+  timestamp="$(_juvy_timestamp)"
+  
+  # Ensure log directory exists
+  if [[ ! -d "$JUVY_CONFIG_DIR" ]]; then
+    mkdir -p "$JUVY_CONFIG_DIR" > /dev/null 2>&1
+  fi
+  
+  # Log error with timestamp
+  print "[$timestamp] $message" >> "$JUVY_LOG"
+}
+
+_juvy_rsync_with_retry() {
+  local source="$1"
+  local dest="$2"
+  local files_from="$3"
+  local max_retries=3
+  local retry_count=0
+  local rsync_output
+  local rsync_exit_code
+  
+  while (( retry_count < max_retries )); do
+    # Capture both stdout and stderr
+    if rsync_output=$(rsync -a --files-from="$files_from" "$source" "$dest" 2>&1); then
+      return 0
+    fi
+    
+    rsync_exit_code=$?
+    
+    # Check if this is a transient error that should be retried
+    case $rsync_exit_code in
+      (30)  # Timeout in data send/receive
+        (( retry_count++ ))
+        if (( retry_count < max_retries )); then
+          print "⚠️  rsync timeout, retrying ($retry_count/$max_retries)..." >&2
+          _juvy_log_error "rsync timeout (exit code $rsync_exit_code), retry $retry_count/$max_retries: $rsync_output"
+          sleep 2
+          continue
+        fi
+        ;;
+      (11)  # File I/O error - might be transient
+        (( retry_count++ ))
+        if (( retry_count < max_retries )); then
+          print "⚠️  rsync I/O error, retrying ($retry_count/$max_retries)..." >&2
+          _juvy_log_error "rsync I/O error (exit code $rsync_exit_code), retry $retry_count/$max_retries: $rsync_output"
+          sleep 1
+          continue
+        fi
+        ;;
+    esac
+    
+    # For non-transient errors or after max retries, show user-friendly message
+    case $rsync_exit_code in
+      (1)
+        print "❌ rsync syntax or usage error" >&2
+        ;;
+      (2)
+        print "❌ rsync protocol incompatibility" >&2
+        ;;
+      (11)
+        print "❌ rsync file I/O error" >&2
+        ;;
+      (12)
+        print "❌ rsync protocol data stream error" >&2
+        ;;
+      (23)
+        print "❌ rsync partial transfer: some files could not be copied" >&2
+        ;;
+      (24)
+        print "❌ rsync source files vanished" >&2
+        ;;
+      (30)
+        print "❌ rsync timeout in data send/receive" >&2
+        ;;
+      (*)
+        print "❌ rsync failed with error code $rsync_exit_code" >&2
+        ;;
+    esac
+    
+    print "See $JUVY_LOG for details" >&2
+    _juvy_log_error "rsync failed (exit code $rsync_exit_code): $rsync_output"
+    return $rsync_exit_code
+  done
 }
 
 _juvy_git() {
