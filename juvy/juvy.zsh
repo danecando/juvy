@@ -261,19 +261,9 @@ _juvy_resolve_backup_path() {
 
 _juvy_parse_backup_entry() {
   local entry="$1"
-  local path permissions
   
-  # Check for permission hint: ~/.ssh/config -> 600
-  # NOTE: Permission hints are parsed but not yet applied in backup flow
-  # This is planned for future implementation
-  if [[ "$entry" == *" -> "* ]]; then
-    path="${entry%% -> *}"
-    permissions="${entry##* -> }"
-    print "path:$path"
-    print "perms:$permissions"
-  else
-    print "path:$entry"
-  fi
+  # Simply return the path - no permission configuration
+  print "path:$entry"
 }
 
 _juvy_resolve_dest_dir() {

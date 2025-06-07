@@ -101,7 +101,7 @@ juvy nuke              # Destroy everything including backups
 
 1. **No Restore Functionality** (Issue #5)
    - Critical missing feature - users cannot restore backed up files
-   - Need `juvy restore` with safety backups and permission preservation
+   - Need `juvy restore` with safety backups (permissions automatically preserved by rsync)
 
 2. **Limited Error Handling** (Issue #2)
    - rsync failures can occur silently, potentially corrupting backups
@@ -137,7 +137,7 @@ juvy nuke              # Destroy everything including backups
 ### 🔮 Advanced Features (GitHub Issues #9-11)
 
 8. **Enhanced Path Specifications** (Issue #9)
-   - Support absolute paths, exclusions, permission hints
+   - Support absolute paths, exclusions
    - More flexible backup file format
 
 9. **Smart Defaults** (Issue #10)
@@ -181,15 +181,16 @@ juvy nuke              # Destroy everything including backups
 
 ### Current Risks
 1. **Sensitive Data in Cloud** - SSH keys, credentials backed up to iCloud
-2. **Permission Loss** - Restored files might not have correct permissions
-3. **No Encryption** - All backup data stored in plaintext
-4. **No Validation** - Users can backup anything without warnings
+2. **No Encryption** - All backup data stored in plaintext
+3. **No Validation** - Users can backup anything without warnings
 
 ### Mitigation Strategies
 1. **Sensitive File Detection** - Warn about private keys, credentials
-2. **Permission Preservation** - Maintain file permissions in backups
-3. **Local-only Option** - Alternative to cloud storage for sensitive data
-4. **User Education** - Clear security guidance in documentation
+2. **Local-only Option** - Alternative to cloud storage for sensitive data
+3. **User Education** - Clear security guidance in documentation
+
+### Security Features
+- **Permission Preservation** - rsync -a flag maintains original file permissions automatically
 
 ## Implementation Strategy
 
@@ -230,7 +231,6 @@ Current simple text format works but could be enhanced:
 # Future enhanced format
 /.zshrc                      # File relative to $HOME
 /.config/nvim/               # Directory (recursive)
-/.ssh/config -> 600          # With permission hints
 /etc/hosts                   # Absolute path
 !*.log                       # Exclusion pattern
 ```
