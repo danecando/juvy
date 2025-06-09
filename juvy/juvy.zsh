@@ -16,6 +16,10 @@ _juvy_load_config() {
   _JUVY_CONFIG[remote_url]=""
   _JUVY_CONFIG[remote_push]=""
   _JUVY_CONFIG[remote_name]=""
+  _JUVY_CONFIG[schedule_enabled]="false"
+  _JUVY_CONFIG[schedule_frequency]="hourly"
+  _JUVY_CONFIG[schedule_time]="02:00"
+  _JUVY_CONFIG[schedule_method]="launchd"
   
   if [[ -f "$JUVY_CONFIG" ]]; then
     while IFS= read -r line; do
@@ -49,6 +53,18 @@ _juvy_load_config() {
           ;;
         (JUVY_REMOTE_PUSH)
           _JUVY_CONFIG[remote_push]="$value"
+          ;;
+        (JUVY_SCHEDULE_ENABLED)
+          _JUVY_CONFIG[schedule_enabled]="$value"
+          ;;
+        (JUVY_SCHEDULE_FREQUENCY)
+          _JUVY_CONFIG[schedule_frequency]="$value"
+          ;;
+        (JUVY_SCHEDULE_TIME)
+          _JUVY_CONFIG[schedule_time]="$value"
+          ;;
+        (JUVY_SCHEDULE_METHOD)
+          _JUVY_CONFIG[schedule_method]="$value"
           ;;
       esac
     done < "$JUVY_CONFIG"
@@ -131,6 +147,48 @@ _juvy_validate_backup_dir_configured() {
 _juvy_validate_remote_init() {
   _juvy_validate_backup_dir_exists || return 1
   return 0
+}
+
+_juvy_validate_time_format() {
+  local time_value="$1"
+  
+  if [[ "$time_value" =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+    return 0
+  else
+    print "❌ Invalid time format. Expected: HH:MM (24-hour format)" >&2
+    print "   Example: '14:30' or '02:15'" >&2
+    return 1
+  fi
+}
+
+_juvy_validate_schedule_frequency() {
+  local frequency="$1"
+  
+  case "$frequency" in
+    (daily|weekly|hourly)
+      return 0
+      ;;
+    (*)
+      print "❌ Invalid schedule frequency: $frequency" >&2
+      print "   Expected: daily, weekly, or hourly" >&2
+      return 1
+      ;;
+  esac
+}
+
+_juvy_validate_boolean() {
+  local value="$1"
+  
+  case "$value" in
+    (true|false)
+      return 0
+      ;;
+    (*)
+      print "❌ Invalid boolean value: $value" >&2
+      print "   Expected: true or false" >&2
+      return 1
+      ;;
+  esac
 }
 
 
@@ -241,6 +299,10 @@ juvy() {
       shift
       _juvy_status "$@"
       ;;
+    (schedule)
+      shift
+      _juvy_schedule "$@"
+      ;;
     (*)
       if [[ -z $1 ]]; then
         _juvy_help
@@ -305,6 +367,11 @@ _juvy_init_backups() {
   # Prompt for remote setup (always if force_reinit, otherwise only if not configured)
   if [[ "$force_reinit" == "true" ]] || ! grep -q "JUVY_REMOTE_URL=" "$JUVY_CONFIG" 2>/dev/null; then
     _juvy_prompt_remote_setup "$force_reinit"
+  fi
+  
+  # Prompt for schedule setup (always if force_reinit, otherwise only if not configured)
+  if [[ "$force_reinit" == "true" ]] || ! grep -q "JUVY_SCHEDULE_ENABLED=" "$JUVY_CONFIG" 2>/dev/null; then
+    _juvy_prompt_schedule_setup "$force_reinit"
   fi
 }
 
@@ -400,6 +467,92 @@ _juvy_prompt_remote_setup() {
     print ""
     print "💡 Auto-push is enabled. Future backups will be pushed automatically."
     print "💡 To disable auto-push: Set JUVY_REMOTE_PUSH=false in $JUVY_CONFIG"
+  fi
+}
+
+_juvy_prompt_schedule_setup() {
+  local force_reinit="$1"
+  local choice frequency time
+  local current_enabled="${_JUVY_CONFIG[schedule_enabled]}"
+  local current_frequency="${_JUVY_CONFIG[schedule_frequency]}"
+  local current_time="${_JUVY_CONFIG[schedule_time]}"
+  
+  print ""
+  print "🕒 Schedule Setup (Optional)"
+  print "Juvy can automatically backup your files on a schedule."
+  print ""
+  print "Available frequencies:"
+  print "  ✓ hourly  - Run backup every hour"
+  print "  ○ daily   - Run backup once per day at specified time"
+  print "  ○ weekly  - Run backup once per week (Sundays) at specified time"
+  print ""
+  
+  if [[ "$force_reinit" == "true" && "$current_enabled" == "true" ]]; then
+    printf "Currently enabled: %s" "$current_frequency"
+    if [[ "$current_frequency" != "hourly" ]]; then
+      printf " at %s" "$current_time"
+    fi
+    print ""
+    print ""
+  fi
+  
+  printf "Enable automated backups? [Y/n]: "
+  read -r "choice?"
+  
+  if [[ "$choice" =~ ^[Nn]$ ]]; then
+    _juvy_update_config "JUVY_SCHEDULE_ENABLED" "false"
+    print "⏭️  Skipping automated backups. You can enable later with: juvy schedule enable"
+    return 0
+  fi
+  
+  # Default to hourly if user pressed enter or said yes
+  frequency="hourly"
+  
+  printf "Select frequency [hourly]: "
+  read -r "frequency?"
+  
+  # Set default if empty
+  if [[ -z "$frequency" ]]; then
+    frequency="hourly"
+  fi
+  
+  # Validate frequency
+  if ! _juvy_validate_schedule_frequency "$frequency"; then
+    print "Invalid frequency. Defaulting to hourly."
+    frequency="hourly"
+  fi
+  
+  # For daily/weekly, ask for time
+  if [[ "$frequency" == "daily" || "$frequency" == "weekly" ]]; then
+    printf "Backup time (HH:MM format) [02:00]: "
+    read -r "time?"
+    
+    if [[ -z "$time" ]]; then
+      time="02:00"
+    fi
+    
+    if ! _juvy_validate_time_format "$time"; then
+      print "Invalid time format. Using 02:00."
+      time="02:00"
+    fi
+    
+    _juvy_update_config "JUVY_SCHEDULE_TIME" "$time"
+  fi
+  
+  # Save configuration
+  _juvy_update_config "JUVY_SCHEDULE_ENABLED" "true"
+  _juvy_update_config "JUVY_SCHEDULE_FREQUENCY" "$frequency"
+  
+  # Install the schedule
+  if _juvy_install_launchd_agent; then
+    if [[ "$frequency" != "hourly" ]]; then
+      print "✅ Automated backups enabled ($frequency at $time)"
+    else
+      print "✅ Automated backups enabled ($frequency)"
+    fi
+  else
+    print "❌ Failed to enable automated backups"
+    print "   You can try again later with: juvy schedule enable"
   fi
 }
 
@@ -698,6 +851,50 @@ _juvy_validate_config_file() {
         
         if [[ -n "$test_name" ]] && [[ ! "$test_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
           issues+=("Line $line_num: Invalid remote name format: $test_name")
+        fi
+        ;;
+      (JUVY_SCHEDULE_ENABLED)
+        local test_bool
+        if ! test_bool="$(_juvy_parse_quoted_value "$value")"; then
+          issues+=("Line $line_num: Invalid value format: $value")
+          continue
+        fi
+        
+        if [[ "$test_bool" != "true" && "$test_bool" != "false" ]]; then
+          issues+=("Line $line_num: Invalid boolean value (use true/false): $test_bool")
+        fi
+        ;;
+      (JUVY_SCHEDULE_FREQUENCY)
+        local test_freq
+        if ! test_freq="$(_juvy_parse_quoted_value "$value")"; then
+          issues+=("Line $line_num: Invalid value format: $value")
+          continue
+        fi
+        
+        if [[ -n "$test_freq" ]] && [[ "$test_freq" != "daily" && "$test_freq" != "weekly" && "$test_freq" != "hourly" ]]; then
+          issues+=("Line $line_num: Invalid schedule frequency (use daily/weekly/hourly): $test_freq")
+        fi
+        ;;
+      (JUVY_SCHEDULE_TIME)
+        local test_time
+        if ! test_time="$(_juvy_parse_quoted_value "$value")"; then
+          issues+=("Line $line_num: Invalid value format: $value")
+          continue
+        fi
+        
+        if [[ -n "$test_time" ]] && [[ ! "$test_time" =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+          issues+=("Line $line_num: Invalid time format (use HH:MM): $test_time")
+        fi
+        ;;
+      (JUVY_SCHEDULE_METHOD)
+        local test_method
+        if ! test_method="$(_juvy_parse_quoted_value "$value")"; then
+          issues+=("Line $line_num: Invalid value format: $value")
+          continue
+        fi
+        
+        if [[ -n "$test_method" ]] && [[ "$test_method" != "launchd" && "$test_method" != "cron" ]]; then
+          issues+=("Line $line_num: Invalid schedule method (use launchd/cron): $test_method")
         fi
         ;;
       (*)
@@ -2358,6 +2555,304 @@ _juvy_remove_config() {
   fi
 }
 
+_juvy_create_launchd_plist() {
+  local plist_path="$HOME/Library/LaunchAgents/com.juvy.backup.plist"
+  local frequency="${_JUVY_CONFIG[schedule_frequency]}"
+  local time="${_JUVY_CONFIG[schedule_time]}"
+  local hour minute
+  
+  # Parse time
+  hour="${time%:*}"
+  minute="${time#*:}"
+  
+  # Create LaunchAgents directory if it doesn't exist
+  mkdir -p "$HOME/Library/LaunchAgents"
+  
+  # Generate plist content based on frequency
+  case "$frequency" in
+    (daily)
+      cat > "$plist_path" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.juvy.backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/zsh</string>
+        <string>-c</string>
+        <string>source ~/.zshrc && juvy backup</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>$hour</integer>
+        <key>Minute</key>
+        <integer>$minute</integer>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>$JUVY_LOG</string>
+    <key>StandardOutPath</key>
+    <string>$JUVY_LOG</string>
+</dict>
+</plist>
+EOF
+      ;;
+    (weekly)
+      cat > "$plist_path" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.juvy.backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/zsh</string>
+        <string>-c</string>
+        <string>source ~/.zshrc && juvy backup</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>$hour</integer>
+        <key>Minute</key>
+        <integer>$minute</integer>
+        <key>Weekday</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>$JUVY_LOG</string>
+    <key>StandardOutPath</key>
+    <string>$JUVY_LOG</string>
+</dict>
+</plist>
+EOF
+      ;;
+    (hourly)
+      cat > "$plist_path" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.juvy.backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/zsh</string>
+        <string>-c</string>
+        <string>source ~/.zshrc && juvy backup</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>StandardErrorPath</key>
+    <string>$JUVY_LOG</string>
+    <key>StandardOutPath</key>
+    <string>$JUVY_LOG</string>
+</dict>
+</plist>
+EOF
+      ;;
+  esac
+  
+  print "$plist_path"
+}
+
+_juvy_install_launchd_agent() {
+  local plist_path
+  
+  # Create the plist file
+  plist_path="$(_juvy_create_launchd_plist)"
+  
+  if [[ ! -f "$plist_path" ]]; then
+    print "❌ Failed to create plist file" >&2
+    return 1
+  fi
+  
+  # Unload existing agent if loaded
+  launchctl unload "$plist_path" 2>/dev/null || true
+  
+  # Load the new agent
+  if launchctl load "$plist_path" 2>/dev/null; then
+    return 0
+  else
+    print "❌ Failed to load launchd agent" >&2
+    return 1
+  fi
+}
+
+_juvy_uninstall_launchd_agent() {
+  local plist_path="$HOME/Library/LaunchAgents/com.juvy.backup.plist"
+  
+  # Unload the agent if it exists
+  if [[ -f "$plist_path" ]]; then
+    launchctl unload "$plist_path" 2>/dev/null || true
+    rm -f "$plist_path"
+  fi
+  
+  return 0
+}
+
+_juvy_launchd_status() {
+  local plist_path="$HOME/Library/LaunchAgents/com.juvy.backup.plist"
+  
+  if [[ -f "$plist_path" ]]; then
+    print "   Plist file: exists"
+    
+    # Check if loaded
+    if launchctl list | grep -q com.juvy.backup; then
+      print "   Agent status: loaded"
+    else
+      print "   Agent status: not loaded"
+    fi
+  else
+    print "   Plist file: missing"
+    print "   Agent status: not installed"
+  fi
+}
+
+_juvy_schedule() {
+  case $1 in
+    (enable|on)
+      shift
+      _juvy_schedule_enable "$@"
+      ;;
+    (disable|off)
+      _juvy_schedule_disable "$@"
+      ;;
+    (status)
+      _juvy_schedule_status "$@"
+      ;;
+    (daily|weekly|hourly)
+      _juvy_schedule_set_frequency "$@"
+      ;;
+    (*)
+      _juvy_schedule_help
+      ;;
+  esac
+}
+
+_juvy_schedule_enable() {
+  local frequency="${1:-${_JUVY_CONFIG[schedule_frequency]}}"
+  local time="${2:-${_JUVY_CONFIG[schedule_time]}}"
+  
+  _juvy_validate_backup_file_exists || return 1
+  
+  if [[ -n "$1" ]]; then
+    if ! _juvy_validate_schedule_frequency "$frequency"; then
+      return 1
+    fi
+  fi
+  
+  if [[ -n "$2" ]]; then
+    if ! _juvy_validate_time_format "$time"; then
+      return 1
+    fi
+  fi
+  
+  print "🕒 Enabling automated backups..."
+  print "   Frequency: $frequency"
+  print "   Time: $time"
+  
+  _juvy_update_config "JUVY_SCHEDULE_ENABLED" "true"
+  _juvy_update_config "JUVY_SCHEDULE_FREQUENCY" "$frequency"
+  _juvy_update_config "JUVY_SCHEDULE_TIME" "$time"
+  
+  # Install the actual schedule
+  if _juvy_install_launchd_agent; then
+    print "✅ Automated backups enabled"
+    print "   Next backup will run according to schedule"
+    print "   Use 'juvy schedule status' to check status"
+  else
+    print "❌ Failed to enable automated backups"
+    return 1
+  fi
+}
+
+_juvy_schedule_disable() {
+  print "🕒 Disabling automated backups..."
+  
+  _juvy_update_config "JUVY_SCHEDULE_ENABLED" "false"
+  
+  if _juvy_uninstall_launchd_agent; then
+    print "✅ Automated backups disabled"
+  else
+    print "⚠️  Schedule disabled in config, but may need manual cleanup"
+    return 1
+  fi
+}
+
+_juvy_schedule_status() {
+  print "📋 Schedule Status:"
+  print "   Enabled: ${_JUVY_CONFIG[schedule_enabled]}"
+  print "   Frequency: ${_JUVY_CONFIG[schedule_frequency]}"
+  print "   Time: ${_JUVY_CONFIG[schedule_time]}"
+  print "   Method: ${_JUVY_CONFIG[schedule_method]}"
+  
+  if [[ "${_JUVY_CONFIG[schedule_enabled]}" == "true" ]]; then
+    _juvy_launchd_status
+  fi
+}
+
+_juvy_schedule_set_frequency() {
+  local frequency="$1"
+  local time="$2"
+  
+  if ! _juvy_validate_schedule_frequency "$frequency"; then
+    return 1
+  fi
+  
+  if [[ -n "$time" ]] && ! _juvy_validate_time_format "$time"; then
+    return 1
+  fi
+  
+  print "🕒 Setting schedule frequency to $frequency"
+  
+  _juvy_update_config "JUVY_SCHEDULE_FREQUENCY" "$frequency"
+  
+  if [[ -n "$time" ]]; then
+    print "   Setting time to $time"
+    _juvy_update_config "JUVY_SCHEDULE_TIME" "$time"
+  fi
+  
+  # If scheduling is enabled, update the launchd agent
+  if [[ "${_JUVY_CONFIG[schedule_enabled]}" == "true" ]]; then
+    if _juvy_install_launchd_agent; then
+      print "✅ Schedule updated"
+    else
+      print "❌ Failed to update schedule"
+      return 1
+    fi
+  else
+    print "✅ Schedule settings updated (use 'juvy schedule enable' to activate)"
+  fi
+}
+
+_juvy_schedule_help() {
+  print "juvy schedule - Manage automated backup scheduling"
+  print ""
+  print "Usage: juvy schedule <command>"
+  print ""
+  print "Commands:"
+  print "  enable              Enable automated backups with current settings"
+  print "  enable daily        Enable daily backups at configured time"
+  print "  enable daily 14:30  Enable daily backups at 2:30 PM"
+  print "  enable weekly       Enable weekly backups (Sundays at configured time)"
+  print "  enable hourly       Enable hourly backups"
+  print "  disable             Disable automated backups"
+  print "  status              Show current schedule status"
+  print "  daily [time]        Set frequency to daily with optional time"
+  print "  weekly [time]       Set frequency to weekly with optional time"
+  print "  hourly              Set frequency to hourly"
+  print ""
+  print "Examples:"
+  print "  juvy schedule enable daily 02:00    # Daily backups at 2 AM"
+  print "  juvy schedule enable weekly         # Weekly backups (current time)"
+  print "  juvy schedule disable               # Turn off automated backups"
+  print "  juvy schedule status                # Check current settings"
+}
+
 
 _juvy_help() {
   print "juvy $JUVY_VERSION - dotfile backup utility"
@@ -2383,6 +2878,11 @@ _juvy_help() {
   print "              'remote' shows current remote status"
   print "              'remote off' disables remote synchronization"
   print "              'remote push' manually pushes to remote"
+  print "  schedule    Manage automated backup scheduling"
+  print "              'schedule enable' enables hourly backups (default)"
+  print "              'schedule enable daily 14:30' enables daily backups at 2:30 PM"
+  print "              'schedule disable' disables automated backups"
+  print "              'schedule status' shows current schedule"
   print "  update      Update juvy to the latest version"
   print "  version     Show version information"
   print "  uninstall   Remove juvy from system (preserves backups)"
