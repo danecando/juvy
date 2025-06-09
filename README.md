@@ -9,14 +9,12 @@ Targets zsh environments with automatic detection of common dotfiles. Default ba
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 source ~/.zshrc
-juvy init
 ```
 
 The installer will:
 
 - Download the latest version
 - Add juvy to your `.zshrc`
-- Detect existing configurations if any
 
 ## Quick Start
 
@@ -49,6 +47,7 @@ juvy list    # See what's being tracked
 ### Git Integration
 
 - **`juvy git <args>`** - Run git commands in backup directory
+
   ```bash
   # View backup history
   juvy git log --oneline
@@ -86,115 +85,6 @@ juvy list    # See what's being tracked
 - **`juvy uninstall`** - Remove juvy from system (preserves backups)
 - **`juvy nuke`** - Completely destroy juvy and all backups
 
-## Enhanced Path Specifications
-
-juvy supports an advanced backup file format with powerful pattern matching and exclusion capabilities:
-
-### Basic Path Formats
-
-```bash
-juvy add ~/.zshrc           # Explicit tilde path
-juvy add /Users/you/.zshrc  # Absolute path
-juvy add .zshrc             # Implicit home-relative
-juvy add ~/.config/nvim/    # Directory (note trailing slash)
-juvy add /etc/hosts         # Absolute system paths
-```
-
-### Path Pattern Notes
-
-The backup file format is straightforward - each line specifies a literal path to include or exclude. Shell glob patterns are not expanded by juvy itself, but you can add multiple specific paths as needed:
-
-```bash
-~/.zshrc                    # Specific file
-~/.bashrc                   # Another specific file  
-~/.config/nvim/             # Entire directory (trailing slash)
-~/.ssh/config               # Specific file in subdirectory
-```
-
-### Exclusion Patterns
-
-Add exclusion patterns to your backup file with `!` prefix:
-
-```bash
-!~/.config/nvim/undo/       # Exclude undo directory from nvim config
-!~/.config/nvim/swap/       # Exclude swap files directory
-!~/.ssh/id_rsa              # Exclude SSH private key
-!~/.ssh/id_ed25519          # Exclude SSH private key
-```
-
-### Inline Comments
-
-```bash
-~/.zshrc                    # Main shell configuration
-~/.config/secrets/          # Local secrets (consider excluding)
-!~/.config/nvim/swap/       # Exclude swap files
-```
-
-### Advanced Backup File Example
-
-```bash
-# Core shell configuration
-~/.zshrc                    # Main zsh config
-~/.bashrc                   # Bash fallback
-~/.profile                  # Login profile
-
-# Editor configurations  
-~/.config/nvim/             # Neovim config directory
-!~/.config/nvim/undo/       # Exclude volatile undo files
-!~/.config/nvim/.netrwhist  # Exclude netrw history
-
-# Development tools
-~/.gitconfig                # Git global settings
-~/.config/gh/               # GitHub CLI config
-!~/.config/gh/logs/         # Exclude log files
-
-# SSH configuration (sensitive)
-~/.ssh/config               # SSH client config
-~/.ssh/known_hosts          # Known hosts
-!~/.ssh/id_rsa              # Exclude private key
-!~/.ssh/id_ed25519          # Exclude private key
-```
-
-All files are stored using their absolute filesystem paths in the backup for straightforward restore operations (e.g., `/Users/you/.zshrc` → `{backup_dir}/Users/you/.zshrc`).
-
-## Smart Features
-
-### Automatic Detection
-
-- Scans for common dotfiles during `juvy init`
-- Categorizes files as recommended, sensitive, or optional
-- Interactive selection with security warnings
-
-### Validation & Safety
-
-- Validates file existence before backup
-- Warns about large directories (>100MB)
-- Detects sensitive files (SSH keys, certificates, tokens)
-- Creates safety backups before restore operations
-- Interactive prompts for confirmation
-
-### Advanced Backup & Restore
-
-- **Efficient backup**: Two-operation strategy (HOME + SYSTEM) with pattern-based rsync inclusion
-- **Bulk restore**: Single-operation restore with safety backup creation
-- **Directory handling**: Proper hierarchical pattern generation for complete directory trees
-- **Deletion management**: Maintains exact mirrors by removing files not in source
-- **Error resilience**: Comprehensive retry logic for transient network/I/O failures
-
-### Cross-Platform Storage
-
-- Consistent backup format across different systems using absolute paths
-- Simple restore operations thanks to preserved filesystem structure
-- Git versioning with meaningful commit messages
-
-### Remote Git Synchronization
-
-- Optional git remote setup during initialization
-- Automatic push to remote after each backup
-- Manual remote management with `juvy remote` commands
-- Support for GitHub, GitLab, and any git remote
-- SSH and HTTPS authentication support
-
 ## Configuration
 
 ### Configuration Files
@@ -211,10 +101,6 @@ All files are stored using their absolute filesystem paths in the backup for str
   - Inline comments: `~/.zshrc # Main shell config`
 
 - **`~/.config/juvy/log`** - Error logging and operation history
-
-### Runtime Directories
-
-- **`~/.config/juvy/safety-backup/`** - Timestamped backups created before restore operations
 
 ## Backup Structure
 
@@ -296,24 +182,4 @@ juvy remote off
 juvy git remote -v                # View configured remotes
 juvy git pull origin main         # Manual pull
 juvy git push origin main         # Manual push
-```
-
-### Advanced Path Patterns
-
-```bash
-# Edit backup file directly for complex patterns
-juvy add              # Opens $EDITOR with backup file
-
-# Example advanced backup file content:
-echo '# Development environment
-~/.zshrc              # Shell config
-~/.config/nvim/       # Editor config
-!~/.config/nvim/undo/ # Exclude temporary files
-~/.*rc                # All rc files (glob)
-!*.log                # Exclude all logs
-~/.ssh/config         # SSH config
-!~/.ssh/id_*          # Exclude private keys' >> ~/.config/juvy/backup
-
-# Validate patterns
-juvy validate
 ```
