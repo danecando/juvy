@@ -11,12 +11,14 @@ curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 ```
 
 After installation, restart your shell or run:
+
 ```bash
 source ~/.zshrc
 ```
 
 The installer will:
-- Create `~/.juvy/` directory for juvy files
+
+- Create `~/.config/juvy` directory for config files
 - Download the latest version
 - Add juvy to your `.zshrc`
 - Detect existing configurations
@@ -32,57 +34,70 @@ juvy list    # See what's being tracked
 
 ## Commands
 
-### Core Operations
-- `juvy init` - Initialize configuration with smart dotfile detection
-- `juvy add [files...]` - Add files/directories to backup list (or edit with $EDITOR)
-- `juvy backup` - Backup all tracked files with git versioning
-- `juvy restore` - Restore all files from latest backup
-- `juvy list` - Show all tracked files with status and sizes
-- `juvy status` - Show changes since last backup
+### Setup and Configuration
 
-### File Management
-- `juvy validate` - Validate backup configuration without running backup
-- `juvy diff [file]` - Show detailed differences between backup and current files
+- **`juvy init`** - Initialize juvy configuration with smart dotfile detection. Re-running allows changing settings with current values as defaults.
+- **`juvy add [files...]`** - Add files/directories to backup list. Without arguments, opens backup file in `$EDITOR`.
+  - Files: `juvy add ~/.zshrc` or `juvy add /etc/hosts`
+  - Directories: `juvy add ~/.config/nvim/` (trailing slash required)
+  - Multiple files: `juvy add ~/.zshrc ~/.gitconfig`
+- **`juvy validate`** - Validate backup configuration without running backup
+
+### Backup Operations
+
+- **`juvy backup`** - Backup all tracked files with git versioning
+- **`juvy restore`** - Restore all files from latest backup (creates safety backup first)
+- **`juvy list`** - Show all tracked files and directories
+- **`juvy status [file]`** - Show changes since last backup
+  - Without arguments: Shows summary of all changes
+  - With file argument: Shows detailed diff for specific file
 
 ### Git Integration
-- `juvy git <args>` - Run git commands in backup directory
-- `juvy remote <subcommand>` - Manage git remote for backup synchronization
 
-#### Git Command Examples
-```bash
-# View backup history
-juvy git log --oneline
-juvy git log --graph --oneline --all
+- **`juvy git <args>`** - Run git commands in backup directory
+  ```bash
+  # View backup history
+  juvy git log --oneline
+  juvy git log --graph --oneline --all
+  
+  # See details of a specific backup
+  juvy git show HEAD
+  juvy git show <commit-hash>
+  
+  # Check current git status
+  juvy git status
+  
+  # View differences between commits
+  juvy git diff HEAD~1 HEAD
+  
+  # Create a branch for testing
+  juvy git checkout -b experiment
+  juvy git checkout main
+  
+  # Reset to a previous state (careful!)
+  juvy git reset --hard <commit-hash>
+  ```
 
-# See details of a specific backup
-juvy git show HEAD
-juvy git show <commit-hash>
+### Remote Synchronization
 
-# Check current git status
-juvy git status
-
-# View differences between commits
-juvy git diff HEAD~1 HEAD
-
-# Create a branch for testing
-juvy git checkout -b experiment
-juvy git checkout main
-
-# Reset to a previous state (careful!)
-juvy git reset --hard <commit-hash>
-```
+- **`juvy remote <url>`** - Set remote URL and enable auto-sync
+- **`juvy remote`** - Show current remote status
+- **`juvy remote off`** - Disable remote synchronization
+- **`juvy remote push`** - Manually push to remote
 
 ### Maintenance
-- `juvy update` - Update juvy to the latest version
-- `juvy version` - Show version information
-- `juvy uninstall` - Remove juvy from system (preserves backups)
-- `juvy nuke` - Completely destroy juvy and all backups
+
+- **`juvy update`** - Update juvy to the latest version
+- **`juvy version`** - Show version information
+- **`juvy uninstall`** - Remove juvy from system (preserves backups)
+- **`juvy nuke`** - Completely destroy juvy and all backups
 
 ## Enhanced Path Specifications
 
 juvy supports an advanced backup file format with powerful pattern matching and exclusion capabilities:
 
 ### Basic Path Formats
+
 ```bash
 juvy add ~/.zshrc           # Explicit tilde path
 juvy add /Users/you/.zshrc  # Absolute path
@@ -91,24 +106,30 @@ juvy add ~/.config/nvim/    # Directory (note trailing slash)
 juvy add /etc/hosts         # Absolute system paths
 ```
 
-### Glob Patterns
+### Path Pattern Notes
+
+The backup file format is straightforward - each line specifies a literal path to include or exclude. Shell glob patterns are not expanded by juvy itself, but you can add multiple specific paths as needed:
+
 ```bash
-~/.*rc                      # All rc files in home (~/.zshrc, ~/.bashrc, etc.)
-~/.config/*/settings.json   # settings.json in any config subdirectory
-~/.ssh/config_*             # All SSH config variants
-**/README.md                # README.md files in any subdirectory
+~/.zshrc                    # Specific file
+~/.bashrc                   # Another specific file  
+~/.config/nvim/             # Entire directory (trailing slash)
+~/.ssh/config               # Specific file in subdirectory
 ```
 
 ### Exclusion Patterns
+
 Add exclusion patterns to your backup file with `!` prefix:
+
 ```bash
 !~/.config/nvim/undo/       # Exclude undo directory from nvim config
-!*.log                      # Exclude all .log files
-!~/.ssh/id_*                # Exclude SSH private keys
-!**/node_modules/           # Exclude all node_modules directories
+!~/.config/nvim/swap/       # Exclude swap files directory
+!~/.ssh/id_rsa              # Exclude SSH private key
+!~/.ssh/id_ed25519          # Exclude SSH private key
 ```
 
 ### Inline Comments
+
 ```bash
 ~/.zshrc                    # Main shell configuration
 ~/.config/secrets/          # Local secrets (consider excluding)
@@ -116,11 +137,12 @@ Add exclusion patterns to your backup file with `!` prefix:
 ```
 
 ### Advanced Backup File Example
+
 ```bash
 # Core shell configuration
 ~/.zshrc                    # Main zsh config
 ~/.bashrc                   # Bash fallback
-~/.*rc                      # All rc files (glob pattern)
+~/.profile                  # Login profile
 
 # Editor configurations  
 ~/.config/nvim/             # Neovim config directory
@@ -130,11 +152,13 @@ Add exclusion patterns to your backup file with `!` prefix:
 # Development tools
 ~/.gitconfig                # Git global settings
 ~/.config/gh/               # GitHub CLI config
-!*.log                      # Exclude all log files
+!~/.config/gh/logs/         # Exclude log files
 
 # SSH configuration (sensitive)
 ~/.ssh/config               # SSH client config
-!~/.ssh/id_*                # Exclude private keys
+~/.ssh/known_hosts          # Known hosts
+!~/.ssh/id_rsa              # Exclude private key
+!~/.ssh/id_ed25519          # Exclude private key
 ```
 
 All files are stored using their absolute filesystem paths in the backup for straightforward restore operations (e.g., `/Users/you/.zshrc` → `{backup_dir}/Users/you/.zshrc`).
@@ -142,11 +166,13 @@ All files are stored using their absolute filesystem paths in the backup for str
 ## Smart Features
 
 ### Automatic Detection
+
 - Scans for common dotfiles during `juvy init`
 - Categorizes files as recommended, sensitive, or optional
 - Interactive selection with security warnings
 
 ### Validation & Safety
+
 - Validates file existence before backup
 - Warns about large directories (>100MB)
 - Detects sensitive files (SSH keys, certificates, tokens)
@@ -154,6 +180,7 @@ All files are stored using their absolute filesystem paths in the backup for str
 - Interactive prompts for confirmation
 
 ### Advanced Backup & Restore
+
 - **Efficient backup**: Two-operation strategy (HOME + SYSTEM) with pattern-based rsync inclusion
 - **Bulk restore**: Single-operation restore with safety backup creation
 - **Directory handling**: Proper hierarchical pattern generation for complete directory trees
@@ -161,11 +188,13 @@ All files are stored using their absolute filesystem paths in the backup for str
 - **Error resilience**: Comprehensive retry logic for transient network/I/O failures
 
 ### Cross-Platform Storage
+
 - Consistent backup format across different systems using absolute paths
 - Simple restore operations thanks to preserved filesystem structure
 - Git versioning with meaningful commit messages
 
 ### Remote Git Synchronization
+
 - Optional git remote setup during initialization
 - Automatic push to remote after each backup
 - Manual remote management with `juvy remote` commands
@@ -174,9 +203,24 @@ All files are stored using their absolute filesystem paths in the backup for str
 
 ## Configuration
 
-- `$HOME/.config/juvy/config` - Backup directory configuration
-- `$HOME/.config/juvy/backup` - List of files/directories to backup
-- `$HOME/.config/juvy/log` - Error logging
+### Configuration Files
+
+- **`~/.config/juvy/config`** - Main configuration file with key-value pairs:
+  - `JUVY_BACKUP_DIR` - Directory where backups are stored
+  - `JUVY_REMOTE_URL` - Git remote URL for synchronization (optional)
+  - `JUVY_REMOTE_PUSH` - Auto-push after backup (`true`/`false`)
+  - `JUVY_REMOTE_NAME` - Git remote name (usually `origin`)
+
+- **`~/.config/juvy/backup`** - List of files/directories to backup with support for:
+  - Include patterns: `~/.zshrc`, `~/.config/nvim/`
+  - Exclude patterns: `!~/.config/nvim/undo/`
+  - Inline comments: `~/.zshrc # Main shell config`
+
+- **`~/.config/juvy/log`** - Error logging and operation history
+
+### Runtime Directories
+
+- **`~/.config/juvy/safety-backup/`** - Timestamped backups created before restore operations
 
 ## Backup Structure
 
@@ -196,6 +240,7 @@ backup_directory/
 ## Usage Examples
 
 ### Basic Workflow
+
 ```bash
 # Initialize with auto-detection
 juvy init
@@ -215,11 +260,12 @@ juvy list
 # See changes since last backup
 juvy status
 
-# View detailed changes
-juvy diff ~/.zshrc
+# View detailed changes for specific file
+juvy status ~/.zshrc
 ```
 
 ### Advanced Usage
+
 ```bash
 # Add SSH config (with security prompt)
 juvy add ~/.ssh/config
@@ -238,23 +284,28 @@ juvy validate
 ```
 
 ### Remote Git Synchronization
+
 ```bash
 # Add a git remote for cloud sync
-juvy remote add git@github.com:username/dotfiles.git
+juvy remote git@github.com:username/dotfiles.git
 
-# Check remote status and sync info
-juvy remote status
+# Check remote status
+juvy remote
 
-# Manual push/pull operations
+# Manual push operations
 juvy remote push
-juvy remote pull
-juvy remote sync    # Pull then push
 
-# Remove remote configuration
-juvy remote remove
+# Disable remote synchronization
+juvy remote off
+
+# Use git commands directly for advanced operations
+juvy git remote -v                # View configured remotes
+juvy git pull origin main         # Manual pull
+juvy git push origin main         # Manual push
 ```
 
 ### Advanced Path Patterns
+
 ```bash
 # Edit backup file directly for complex patterns
 juvy add              # Opens $EDITOR with backup file

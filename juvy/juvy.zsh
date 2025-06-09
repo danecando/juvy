@@ -253,6 +253,15 @@ juvy() {
 }
 
 _juvy_init() {
+  local force_reinit=false
+  
+  # Check if this is a re-initialization
+  if [[ -d "$JUVY_CONFIG_DIR" && -f "$JUVY_CONFIG" ]]; then
+    force_reinit=true
+    print "🔄 Juvy is already initialized. Re-initializing with current settings as defaults..."
+    print ""
+  fi
+  
   if [[ ! -d "$JUVY_CONFIG_DIR" ]]; then
     mkdir -p "$JUVY_CONFIG_DIR" > /dev/null 2>&1
   fi
@@ -265,50 +274,45 @@ _juvy_init() {
     touch "$JUVY_CONFIG"
   fi
 
-  _juvy_init_backups
+  _juvy_init_backups "$force_reinit"
 }
 
 _juvy_init_backups() { 
-  local dir
+  local dir force_reinit="$1"
+  local current_backup_dir="${_JUVY_CONFIG[backup_dir]}"
   
-  if ! grep -q "JUVY_BACKUP_DIR=" "$JUVY_CONFIG" 2>/dev/null; then
-    printf "juvy: Where do you want backups to be stored? (enter for default: %s) " "${_JUVY_CONFIG[backup_dir]}"
+  # Always prompt for backup directory (with current value as default)
+  if [[ "$force_reinit" == "true" ]] || ! grep -q "JUVY_BACKUP_DIR=" "$JUVY_CONFIG" 2>/dev/null; then
+    printf "juvy: Where do you want backups to be stored? (enter for current: %s) " "$current_backup_dir"
     read -r "dir?"
 
     if [[ -n $dir ]]; then
       if mkdir -p "$dir" > /dev/null 2>&1; then
         _JUVY_CONFIG[backup_dir]="$dir"
       else
-        printf "juvy: Unable to create backup directory (%s). Falling back to default (%s)\n" "$dir" "${_JUVY_CONFIG[backup_dir]}"
+        printf "juvy: Unable to create backup directory (%s). Keeping current (%s)\n" "$dir" "$current_backup_dir"
       fi
     fi
 
-    # Save backup directory with robust quoting
-    if [[ "${_JUVY_CONFIG[backup_dir]}" == *"'"* ]]; then
-      # Contains single quotes, use double quotes with escaping
-      local escaped_dir="${_JUVY_CONFIG[backup_dir]//\\/\\\\}"    # Escape backslashes
-      escaped_dir="${escaped_dir//\"/\\\"}"              # Escape double quotes
-      escaped_dir="${escaped_dir//\$/\\\$}"              # Escape dollar signs
-      escaped_dir="${escaped_dir//\`/\\\`}"              # Escape backticks
-      print -r "JUVY_BACKUP_DIR=\"$escaped_dir\"" > "$JUVY_CONFIG"
-    else
-      # Use single quotes for safety
-      print -r "JUVY_BACKUP_DIR='${_JUVY_CONFIG[backup_dir]}'" > "$JUVY_CONFIG"
-    fi
+    # Save backup directory using _juvy_update_config (it handles quoting internally)
+    _juvy_update_config "JUVY_BACKUP_DIR" "${_JUVY_CONFIG[backup_dir]}"
   fi 
 
   if [[ ! -d "${_JUVY_CONFIG[backup_dir]}/.git" ]]; then
     git init -b main "${_JUVY_CONFIG[backup_dir]}"
   fi
   
-  # Prompt for remote setup if not already configured
-  if ! grep -q "JUVY_REMOTE_URL=" "$JUVY_CONFIG" 2>/dev/null; then
-    _juvy_prompt_remote_setup
+  # Prompt for remote setup (always if force_reinit, otherwise only if not configured)
+  if [[ "$force_reinit" == "true" ]] || ! grep -q "JUVY_REMOTE_URL=" "$JUVY_CONFIG" 2>/dev/null; then
+    _juvy_prompt_remote_setup "$force_reinit"
   fi
 }
 
 _juvy_prompt_remote_setup() {
+  local force_reinit="$1"
   local remote_url choice
+  local current_remote="${_JUVY_CONFIG[remote_url]}"
+  local current_push="${_JUVY_CONFIG[remote_push]}"
   
   print ""
   print "🔗 Git Remote Setup (Optional)"
@@ -319,7 +323,16 @@ _juvy_prompt_remote_setup() {
   print "  • Extra backup redundancy"
   print "  • Version history in the cloud"
   print ""
-  print "Enter git remote URL (or press Enter to skip):"
+  
+  if [[ "$force_reinit" == "true" && -n "$current_remote" ]]; then
+    print "Current remote: $current_remote"
+    print "Current auto-push: ${current_push:-false}"
+    print ""
+    print "Enter new git remote URL (or press Enter to keep current):"
+  else
+    print "Enter git remote URL (or press Enter to skip):"
+  fi
+  
   print "Examples:"
   print "  git@github.com:username/dotfiles.git"
   print "  https://github.com/username/dotfiles.git"
@@ -328,8 +341,13 @@ _juvy_prompt_remote_setup() {
   read -r "remote_url?"
   
   if [[ -z "$remote_url" ]]; then
-    print "⏭️  Skipping remote setup. You can add one later with: juvy remote add <url>"
-    return 0
+    if [[ "$force_reinit" == "true" && -n "$current_remote" ]]; then
+      print "✅ Keeping current remote configuration"
+      return 0
+    else
+      print "⏭️  Skipping remote setup. You can add one later with: juvy remote add <url>"
+      return 0
+    fi
   fi
   
   # Validate URL format
