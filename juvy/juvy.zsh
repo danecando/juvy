@@ -744,6 +744,7 @@ _juvy_uninstall() {
   print "This will remove juvy from your system (but preserve backups):"
   print "  • Configuration directory: $JUVY_CONFIG_DIR"
   print "  • Installation directory: $HOME/.juvy"
+  print "  • Automated backup schedule (if enabled)"
   print "  • juvy entry from ~/.zshrc"
   print ""
   print "❗ Backup directory will be preserved: ${_JUVY_CONFIG[backup_dir]}"
@@ -1542,6 +1543,11 @@ _juvy_nuke() {
 }
 
 _juvy_uninstall_internal() {
+  # Remove schedule agent first (before removing config)
+  if _juvy_uninstall_launchd_agent; then
+    print "🗑️  Removed automated backup schedule"
+  fi
+  
   if [[ -d "$JUVY_CONFIG_DIR" ]]; then
     rm -rf "$JUVY_CONFIG_DIR"
     print "🗑️  Removed configuration directory"
