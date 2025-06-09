@@ -8,21 +8,15 @@ Targets zsh environments with automatic detection of common dotfiles. Default ba
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
-```
-
-After installation, restart your shell or run:
-
-```bash
 source ~/.zshrc
+juvy init
 ```
 
 The installer will:
 
-- Create `~/.config/juvy` directory for config files
 - Download the latest version
 - Add juvy to your `.zshrc`
-- Detect existing configurations
-- Optionally run initial setup
+- Detect existing configurations if any
 
 ## Quick Start
 

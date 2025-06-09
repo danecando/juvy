@@ -84,13 +84,10 @@ if [[ -f "$HOME/.config/juvy/config" ]] && [[ -f "$HOME/.config/juvy/backup" ]];
   print_info "Run 'juvy backup' to backup your files"
 else
   print ""
-  print "Would you like to configure juvy now? [Y/n] "
-  read -r "configure?"
-  if [[ "$configure" != "n" ]]; then
-    juvy init
-  else
-    print_info "Run 'juvy init' to configure later"
-  fi
+  print_info "Setup complete! Next steps:"
+  print "  1. Restart your shell or run: source ~/.zshrc"
+  print "  2. Configure juvy: juvy init"
+  print "  3. Start backing up: juvy backup"
 fi
 
 print ""
