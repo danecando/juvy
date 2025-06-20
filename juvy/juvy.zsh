@@ -144,11 +144,6 @@ _juvy_validate_backup_dir_configured() {
   return 0
 }
 
-_juvy_validate_remote_init() {
-  _juvy_validate_backup_dir_exists || return 1
-  return 0
-}
-
 _juvy_validate_time_format() {
   local time_value="$1"
   
@@ -175,22 +170,6 @@ _juvy_validate_schedule_frequency() {
       ;;
   esac
 }
-
-_juvy_validate_boolean() {
-  local value="$1"
-  
-  case "$value" in
-    (true|false)
-      return 0
-      ;;
-    (*)
-      print "❌ Invalid boolean value: $value" >&2
-      print "   Expected: true or false" >&2
-      return 1
-      ;;
-  esac
-}
-
 
 _juvy_parse_entry_basic() {
   local entry="$1"
@@ -1408,14 +1387,6 @@ _juvy_path_matches_pattern() {
       return $?
       ;;
   esac
-}
-
-_juvy_rsync_with_delete() {
-  local source="$1"
-  local dest="$2"
-  local files_from="$3"
-  
-  _juvy_rsync_simple -av --delete --files-from="$files_from" "$source" "$dest"
 }
 
 _juvy_rsync_with_includes() {

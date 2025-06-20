@@ -183,7 +183,6 @@ The tool supports optional git remote synchronization:
 - Rsync operations use specialized functions with retry logic:
   - `_juvy_rsync_with_includes()` for backup operations with pattern-based inclusion
   - `_juvy_rsync_restore()` for restore operations with bulk copying
-  - `_juvy_rsync_with_delete()` for legacy operations (deprecated)
 - Pattern generation uses helper functions `_juvy_add_directory_patterns()` and `_juvy_add_file_patterns()`
 - All rsync functions include comprehensive error handling and user-friendly messages
 - User prompts follow consistent emoji-based formatting for better UX
