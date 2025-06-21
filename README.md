@@ -24,12 +24,6 @@ juvy backup  # Create your first backup
 juvy list    # See what's being tracked
 ```
 
-## Compatibility
-
-juvy works on both GNU/Linux and macOS. If `gdate` from coreutils is
-available it will be used for date calculations; otherwise the
-platform's `date` command is used.
-
 ## Commands
 
 ### Setup and Configuration
