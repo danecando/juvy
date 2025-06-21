@@ -2285,16 +2285,27 @@ _juvy_show_file_diff() {
 }
 
 
+
 _juvy_get_relative_time() {
   local backup_date="$1"
-  local backup_epoch current_epoch diff_seconds
-  
-  if ! backup_epoch="$(date -d "$backup_date" +%s 2>/dev/null)"; then
+  local date_bin backup_epoch current_epoch diff_seconds
+
+  if command -v gdate >/dev/null 2>&1; then
+    date_bin="gdate"
+  else
+    date_bin="/bin/date"
+  fi
+
+  if ! backup_epoch="$("$date_bin" -d "$backup_date" +%s 2>/dev/null)"; then
+    backup_epoch="$("$date_bin" -j -f '%Y-%m-%d %H:%M:%S' "$backup_date" +%s 2>/dev/null)"
+  fi
+
+  if [[ -z "$backup_epoch" ]]; then
     echo "unknown time ago"
     return
   fi
-  
-  current_epoch="$(date +%s)"
+
+  current_epoch="$("$date_bin" +%s)"
   diff_seconds=$((current_epoch - backup_epoch))
   
   if (( diff_seconds < 60 )); then
