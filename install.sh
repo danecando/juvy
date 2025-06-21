@@ -25,12 +25,12 @@ if [[ "$SHELL" != *"zsh"* ]]; then
   exit 1
 fi
 
-if ! command -v rsync &> /dev/null; then
+if ! (( $+commands[rsync] )); then
   print_error "juvy requires rsync, which was not found"
   exit 1
 fi
 
-if ! command -v git &> /dev/null; then
+if ! (( $+commands[git] )); then
   print_error "juvy requires git, which was not found"
   exit 1
 fi
