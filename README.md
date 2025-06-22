@@ -183,3 +183,13 @@ juvy git remote -v                # View configured remotes
 juvy git pull origin main         # Manual pull
 juvy git push origin main         # Manual push
 ```
+
+## Testing
+
+A small test framework lives in the `tests` directory. To run all tests, execute:
+
+```bash
+./tests/run-tests.sh
+```
+
+Each test creates an isolated environment using temporary directories and requires `zsh`, `git`, and `rsync` to be available on the system.
