@@ -1,0 +1,9 @@
+#!/bin/bash
+# Test script for comprehensive backup test
+
+echo "This is a test script in /usr/local/bin"
+echo "Current date: $(date)"
+echo "User: $(whoami)"
+
+# This script would typically have executable permissions
+# but we're just testing backup functionality

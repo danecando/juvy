@@ -1,0 +1,8 @@
+# System hosts file for comprehensive test
+127.0.0.1	localhost
+::1		localhost
+
+# Test entries
+192.168.1.100	test.local
+192.168.1.101	dev.local
+192.168.1.102	staging.local

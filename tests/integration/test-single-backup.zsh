@@ -4,51 +4,35 @@ set -e
 # Load testing utilities
 source "$(dirname $0)/../test-framework.zsh"
 
-TEST_ROOT=$(mktemp -d)
-export HOME="$TEST_ROOT/home"
-mkdir -p "$HOME"
+# Load test environment setup
+source "$(dirname $0)/../juvy-test-setup.zsh"
 
-FIXTURES_DIR="$(dirname $0)/../fixtures"
+# Set up isolated test environment with single-backup fixture set
+setup_juvy_test_env "single-backup" "testuser" "single-backup"
 
-# Copy fixture dotfile
-mkdir -p "$HOME"
-cp "$FIXTURES_DIR/sample-dotfiles/.zshrc" "$HOME/.zshrc"
+# Load fixtures and backup configuration
+load_test_fixtures
+create_backup_entries_from_fixtures
 
-# Prepare juvy config
-export JUVY_CONFIG_DIR="$HOME/.config/juvy"
-export JUVY_CONFIG="$JUVY_CONFIG_DIR/config"
-export JUVY_BACKUP="$JUVY_CONFIG_DIR/backup"
-export JUVY_LOG="$JUVY_CONFIG_DIR/log"
-mkdir -p "$JUVY_CONFIG_DIR"
-
-BACKUP_DIR="$TEST_ROOT/backup"
-mkdir -p "$BACKUP_DIR"
-git init -b main "$BACKUP_DIR" >/dev/null 2>&1
-git -C "$BACKUP_DIR" config user.name "Test User"
-git -C "$BACKUP_DIR" config user.email "test@example.com"
-
-echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG"
-echo ".zshrc" > "$JUVY_BACKUP"
-
-# Source juvy
-source "$(dirname $0)/../../juvy/juvy.zsh"
+# Load juvy with test environment
+load_juvy_for_test
 
 # Run backup
 juvy backup >/dev/null
 
-BACKUP_PATH="$BACKUP_DIR$HOME/.zshrc"
+BACKUP_PATH="$JUVY_TEST_BACKUP_DIR$JUVY_TEST_HOME/.zshrc"
 
 assert_file_exists "$BACKUP_PATH"
-assert_files_identical "$HOME/.zshrc" "$BACKUP_PATH"
+assert_files_identical "$JUVY_TEST_HOME/.zshrc" "$BACKUP_PATH"
 
 # Remove original and restore
-rm "$HOME/.zshrc"
+rm "$JUVY_TEST_HOME/.zshrc"
 
 echo y | juvy restore >/dev/null
 
-assert_file_exists "$HOME/.zshrc"
-assert_files_identical "$HOME/.zshrc" "$BACKUP_PATH"
+assert_file_exists "$JUVY_TEST_HOME/.zshrc"
+assert_files_identical "$JUVY_TEST_HOME/.zshrc" "$BACKUP_PATH"
 
-cleanup_dir "$TEST_ROOT"
+cleanup_test_env
 
 report_pass "single-backup"

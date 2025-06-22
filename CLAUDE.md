@@ -1,197 +1,85 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Rules
 
-- Do not use the users system and real configuration files to test during implementation or testing. Create temporary files and fixtures. We do not want to accidentally change or break the user's system. Place temporary files in @tests/tmp directory from the root of this project.
+- Use temporary files in `tmp/` directory for testing. Never modify user's real config files.
 
 ## Project Overview
 
-juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for versioned backups with smart defaults. It targets zsh environments with automatic detection of common dotfiles and stores backups in iCloud Drive by default for cross-device sync.
+juvy is a dotfile backup utility written in Zsh using rsync + git for versioned backups. Single file architecture in `juvy/juvy.zsh` (~2700 lines).
 
 ## Architecture
 
-### Core Structure
+**Entry Point**: `juvy()` function dispatches to `_juvy_*` functions based on first argument.
 
-- **Single file architecture**: The entire application is contained in `juvy/juvy.zsh` (~2700 lines)
-- **Function-based design**: All functionality is implemented as zsh functions with `_juvy_` prefix
-- **Configuration-driven**: Uses files in `~/.config/juvy/` for configuration and state
-- **Git-based versioning**: Each backup creates a git commit for version history
-
-### Key Components
-
-**Main Entry Point**: `juvy()` function acts as a command dispatcher that routes to specific sub-functions based on the first argument.
-
-**Path Resolution System**:
-
+**Key Functions**:
 - `_juvy_entry_to_source_path()` - Converts backup entries to filesystem paths
 - `_juvy_entry_to_backup_path()` - Maps entries to backup storage locations  
-- `_juvy_backup_path_to_entry()` - Reverse mapping from backup to entry format
+- `_juvy_process_backup_entries()` - Main backup orchestration
+- `_juvy_perform_restore()` - Main restore orchestration
 
-**Backup Processing**:
+**Backup Strategy**: Two rsync operations (HOME vs SYSTEM files) with pattern-based inclusion
+**Restore Strategy**: Single bulk rsync operation with safety backups
+**Git Integration**: Auto-commits after backup, optional remote sync
+**Retry Logic**: 3-retry mechanism with exponential backoff for rsync operations
 
-- `_juvy_process_backup_entries()` - Main backup orchestration with include/exclude pattern support
-- `_juvy_rsync_with_includes()` - Advanced rsync operations with pattern-based inclusion and retry logic
-- `_juvy_add_directory_patterns()` and `_juvy_add_file_patterns()` - Generate rsync include patterns for proper directory/file handling
-- `_juvy_parse_backup_entry()` - Parses backup file entries supporting comments and exclusions
-
-**Restore Processing**:
-
-- `_juvy_perform_restore()` - Main restore orchestration with safety backup creation
-- `_juvy_rsync_restore()` - Single-operation bulk restore with error handling and retry logic
-- `_juvy_create_safety_backup()` - Creates timestamped safety backups before restore operations
-
-**Git Remote Integration**:
-
-- `_juvy_remote_*()` functions handle git remote configuration and synchronization
-- Auto-push capability after each backup when configured
-
-## Configuration Files
-
-- `~/.config/juvy/config` - Shell variables for configuration (JUVY_BACKUP_DIR, remote settings)
-- `~/.config/juvy/backup` - List of files/directories to backup with support for:
-  - Include patterns: `~/.zshrc`, `~/.config/nvim/`
-  - Exclude patterns: `!~/.config/nvim/undo/`
-  - Inline comments: `~/.zshrc # Main shell config`
+**Config Files**:
+- `~/.config/juvy/config` - Shell variables (JUVY_BACKUP_DIR, remote settings)
+- `~/.config/juvy/backup` - List of files/directories to backup
 - `~/.config/juvy/log` - Error logging
 
-## Development Commands
+## Path Handling
 
-### Testing
-
-```bash
-# Manual testing - there's a manual_test/ directory but no automated tests
-# Test basic functionality:
-juvy init      # Initialize with auto-detection
-juvy validate  # Validate backup configuration  
-juvy backup    # Create backup
-juvy list      # Verify tracked files
-juvy status    # Check for changes
-
-# Test git integration:
-juvy git status              # Check git status
-juvy git log --oneline       # View backup history
-juvy git show HEAD           # View latest backup details
-juvy git diff HEAD~1 HEAD    # Compare last two backups
-```
-
-### Installation
-
-```bash
-# Install from repository
-curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
-
-# Local development installation
-./install.sh
-```
-
-### Version Management
-
-- Version is hardcoded in `JUVY_VERSION` variable in juvy.zsh
-- Update mechanism downloads from GitHub main branch
-
-## Important Implementation Details
-
-### Path Handling
-
-The system supports three path formats:
-
-- Explicit tilde paths: `~/.zshrc`
-- Absolute paths: `/etc/hosts`
+Three formats supported:
+- Explicit tilde: `~/.zshrc`
+- Absolute: `/etc/hosts`  
 - Implicit home-relative: `.zshrc` (treated as `~/.zshrc`)
 
-All paths are stored in backup using their absolute filesystem structure (e.g., `/Users/user/.zshrc` → `{backup_dir}/Users/user/.zshrc`) for clean organization and simple restore operations.
+Backup storage uses absolute filesystem structure: `/Users/user/.zshrc` → `{backup_dir}/Users/user/.zshrc`
 
-### Backup File Format
-
-Supports advanced patterns:
+## Backup File Format
 
 ```bash
-# Core files
 ~/.zshrc                    # Single file
 ~/.config/nvim/             # Directory (trailing slash required)
-
-# Exclusion patterns  
-!~/.config/nvim/undo/       # Exclude undo directory
-!*.log                      # Exclude all .log files
-
-# Inline comments supported
+!~/.config/nvim/undo/       # Exclude directory
 ~/.gitconfig                # Git configuration
 ```
 
-### Security Features
+## Testing
 
-- Automatic detection and warnings for sensitive files (SSH keys, certificates, tokens)
-- Interactive prompts for security warnings
-- Large directory detection (>100MB) with user prompts
-- Safety backups created before restore operations
+**Test Framework**: 
+- `tests/test-framework.zsh` - Basic test utilities
+- `tests/juvy-test-setup.zsh` - Isolated test environment setup
 
-### Backup and Restore Implementation
+**Test Environment Setup**:
+```bash
+# Setup with fixture set
+setup_juvy_test_env "test-name" "testuser" "fixture-set"
+load_test_fixtures
+create_backup_entries_from_fixtures
+load_juvy_for_test
 
-**Backup Strategy (Two-Operation Approach)**:
+# Cleanup
+cleanup_test_env
+```
 
-- **HOME directory sync**: Single rsync operation for all home directory files using include patterns
-- **SYSTEM directory sync**: Single rsync operation for all system files using include patterns  
-- **Pattern-based inclusion**: Uses `--include-from` with generated patterns for directories and files
-- **Deletion management**: Uses `--delete` and `--delete-excluded` to maintain exact mirrors
-- **Directory handling**: Generates hierarchical patterns (parent dirs + recursive `**` patterns) for proper directory inclusion
+**Fixture Organization**:
+```
+tests/fixtures/
+├── single-backup/
+│   ├── home/.zshrc
+│   └── backup-entries
+└── complex-workflow/
+    ├── home/.config/nvim/
+    ├── etc/hosts
+    └── backup-entries
+```
 
-**Restore Strategy (Single-Operation Approach)**:
-
-- **Bulk restore**: Single rsync operation copies entire backup structure back to filesystem
-- **Safety backups**: Creates timestamped backup of current files before restore
-- **Git exclusion**: Excludes `.git` directory from restore to avoid restoring backup metadata
-- **Permission handling**: Uses `--ignore-errors` and treats partial transfers as success when data is transferred
-
-### Error Handling
-
-- Comprehensive rsync retry logic for transient errors (timeouts, I/O errors)
-- Both backup and restore operations include 3-retry mechanism with exponential backoff
-- Detailed error logging to `~/.config/juvy/log`
-- User-friendly error messages with actionable suggestions
-- Special handling for permission issues during restore operations
-
-## Testing Strategy
-
-Since there are no automated tests, when making changes:
-
-1. Test core workflow: `init` → `add` → `validate` → `backup` → `list` → `status` → `restore`
-2. Test backup operations:
-   - Individual files and directories with trailing slashes
-   - Include/exclude pattern filtering
-   - Directory pattern generation and hierarchical inclusion
-   - Deletion of files not in backup source
-3. Test restore operations:
-   - Bulk restore functionality with safety backup creation
-   - Permission handling on system directories
-   - Git metadata exclusion during restore
-4. Test edge cases: missing files, large directories, sensitive files
-5. Test git operations: commits, remote push/pull if configured
-6. Test error conditions: invalid paths, permission issues, network failures, rsync failures
-7. Verify path resolution works correctly for all three path formats
-8. Test retry logic for both backup and restore operations
-
-## Git Remote Features
-
-The tool supports optional git remote synchronization:
-
-- Prompted during `juvy init` but can be skipped
-- Supports SSH and HTTPS git URLs  
-- Auto-push after each backup when enabled
-- Manual remote management via `juvy remote` commands
-
-## Common Development Patterns
-
-- All user-facing functions follow the `_juvy_<command>` naming pattern
-- Configuration updates use `_juvy_update_config` and `_juvy_remove_config` utilities
-- Path validation happens before any operations via `_juvy_validate_path`
-- Rsync operations use specialized functions with retry logic:
-  - `_juvy_rsync_with_includes()` for backup operations with pattern-based inclusion
-  - `_juvy_rsync_restore()` for restore operations with bulk copying
-- Pattern generation uses helper functions `_juvy_add_directory_patterns()` and `_juvy_add_file_patterns()`
-- All rsync functions include comprehensive error handling and user-friendly messages
-- User prompts follow consistent emoji-based formatting for better UX
+**Unit Tests**: Test individual functions in isolation using temp files
+**Integration Tests**: Use full test environment with fixture sets
 
 ## Zsh Manual Reference
 
@@ -294,3 +182,14 @@ esac
 - ❌ `command -v cmd` → ✅ `(( $+commands[cmd] ))`
 - ❌ `$(grep pattern file)` tests → ✅ `grep -q pattern file`
 - ❌ Unquoted variables → ✅ `"$variable"`
+
+## Development Commands
+
+```bash
+# Core workflow testing
+juvy init && juvy backup && juvy status && juvy restore
+
+# Run tests
+./tests/run-tests.sh
+./tests/integration/test-single-backup.zsh
+```
