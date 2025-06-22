@@ -1,4 +1,19 @@
 emulate -L zsh
+# ------------------------------------------------------------------------------
+# juvy.zsh - dotfile backup utility
+# ------------------------------------------------------------------------------
+# This single file implements all juvy commands and supporting helpers.
+# The script is organized into the following sections. Search for the
+# corresponding headers to quickly jump to an area:
+#   CONFIGURATION FUNCTIONS
+#   UTILITY FUNCTIONS
+#   BACKUP FUNCTIONS
+#   RESTORE FUNCTIONS
+#   GIT/REMOTE FUNCTIONS
+#   SCHEDULING FUNCTIONS
+#   COMMAND DISPATCHER & HELP
+# ------------------------------------------------------------------------------
+
 
 typeset -g JUVY_VERSION="1.0.1"
 typeset -g JUVY_CONFIG_DIR="$HOME/.config/juvy"
@@ -8,6 +23,8 @@ typeset -g JUVY_LOG="$JUVY_CONFIG_DIR/log"
 
 # Global configuration array
 typeset -gA _JUVY_CONFIG
+## CONFIGURATION FUNCTIONS ###################################################
+
 
 _juvy_load_config() {
   local line key value
@@ -229,6 +246,8 @@ _juvy_rsync_simple() {
   _juvy_log_error "rsync failed (exit code $rsync_exit_code): $rsync_output"
   return $rsync_exit_code
 }
+## COMMAND DISPATCHER & HELP ###################################################
+
 
 juvy() {
   # Load configuration at start of each command
@@ -293,6 +312,72 @@ juvy() {
   esac
 }
 
+_juvy_schedule_help() {
+  print "juvy schedule - Manage automated backup scheduling"
+  print ""
+  print "Usage: juvy schedule <command>"
+  print ""
+  print "Commands:"
+  print "  enable              Enable automated backups with current settings"
+  print "  enable daily        Enable daily backups at configured time"
+  print "  enable daily 14:30  Enable daily backups at 2:30 PM"
+  print "  enable weekly       Enable weekly backups (Sundays at configured time)"
+  print "  enable hourly       Enable hourly backups"
+  print "  disable             Disable automated backups"
+  print "  status              Show current schedule status"
+  print "  daily [time]        Set frequency to daily with optional time"
+  print "  weekly [time]       Set frequency to weekly with optional time"
+  print "  hourly              Set frequency to hourly"
+  print ""
+  print "Examples:"
+  print "  juvy schedule enable daily 02:00    # Daily backups at 2 AM"
+  print "  juvy schedule enable weekly         # Weekly backups (current time)"
+  print "  juvy schedule disable               # Turn off automated backups"
+  print "  juvy schedule status                # Check current settings"
+}
+
+_juvy_help() {
+  print "juvy $JUVY_VERSION - dotfile backup utility"
+  print ""
+  print "Usage: juvy <command>"
+  print ""
+  print "Commands:"
+  print "  init        Initialize juvy configuration"
+  print "  add         Add files/directories to backup list (or edit with \$EDITOR)"
+  print "              Files: 'add ~/.zshrc' or 'add /etc/hosts'"
+  print "              Directories: 'add ~/.config/nvim/' (with trailing slash)"
+  print "              Absolute paths: '/etc/hosts' (may require sudo for backup)"
+  print "              Home paths: '~/.zshrc' (recommended for dotfiles)"
+  print "  backup      Backup files and directories to configured directory"
+  print "  restore     Restore all files from latest backup"
+  print "  list        Show all tracked files and directories"
+  print "  status      Show changes since last backup"
+  print "              'status [file]' shows detailed diff for specific file"
+  print "  validate    Validate backup file without running backup"
+  print "  git         Run git commands in backup directory"
+  print "  remote      Manage git remote for backup synchronization"
+  print "              'remote <url>' sets remote and enables auto-sync"
+  print "              'remote' shows current remote status"
+  print "              'remote off' disables remote synchronization"
+  print "              'remote push' manually pushes to remote"
+  print "  schedule    Manage automated backup scheduling"
+  print "              'schedule enable' enables hourly backups (default)"
+  print "              'schedule enable daily 14:30' enables daily backups at 2:30 PM"
+  print "              'schedule disable' disables automated backups"
+  print "              'schedule status' shows current schedule"
+  print "  update      Update juvy to the latest version"
+  print "  version     Show version information"
+  print "  uninstall   Remove juvy from system (preserves backups)"
+  print "  nuke        Completely destroy juvy and all backups"
+  print ""
+  print "Backup File Format:"
+  print "  # Comments start with #"
+  print "  ~/.zshrc                  # Include files"
+  print "  ~/.config/nvim/           # Include directories (trailing /)"
+  print "  !~/.config/nvim/undo/     # Exclude patterns (prefix with !)"
+  print "  ~/.ssh/config             # Inline comments supported"
+  print ""
+}
 _juvy_init() {
   local force_reinit=false
   
@@ -965,6 +1050,10 @@ _juvy_validate_backup_file() {
   return 0
 }
 
+## BACKUP FUNCTIONS ###########################################################
+
+# Perform backup of all configured files and commit changes
+
 _juvy_backup() {
   _juvy_validate_backup_dir_configured || return 1
   _juvy_validate_backup_file_exists || return 1
@@ -1082,6 +1171,8 @@ _juvy_extract_parsed_field() {
     print "$default_value"
   fi
 }
+
+## UTILITY FUNCTIONS ##########################################################
 
 
 # New unified path mapping utilities
@@ -1811,7 +1902,11 @@ _juvy_add() {
   fi
 }
 
+## RESTORE FUNCTIONS ##########################################################
+# Restore all files from the latest backup
+
 _juvy_restore() {
+
   _juvy_validate_backup_dir_exists || return 1
   _juvy_validate_backup_file_exists || return 1
   
@@ -2319,6 +2414,10 @@ _juvy_get_relative_time() {
   fi
 }
 
+## GIT/REMOTE FUNCTIONS ######################################################
+
+
+# Manage git remote configuration commands
 
 _juvy_remote() {
   case $1 in
@@ -2699,6 +2798,10 @@ _juvy_launchd_status() {
     print "   Agent status: not installed"
   fi
 }
+## SCHEDULING FUNCTIONS #######################################################
+
+
+# Manage automated backup scheduling commands
 
 _juvy_schedule() {
   case $1 in
@@ -2817,70 +2920,3 @@ _juvy_schedule_set_frequency() {
   fi
 }
 
-_juvy_schedule_help() {
-  print "juvy schedule - Manage automated backup scheduling"
-  print ""
-  print "Usage: juvy schedule <command>"
-  print ""
-  print "Commands:"
-  print "  enable              Enable automated backups with current settings"
-  print "  enable daily        Enable daily backups at configured time"
-  print "  enable daily 14:30  Enable daily backups at 2:30 PM"
-  print "  enable weekly       Enable weekly backups (Sundays at configured time)"
-  print "  enable hourly       Enable hourly backups"
-  print "  disable             Disable automated backups"
-  print "  status              Show current schedule status"
-  print "  daily [time]        Set frequency to daily with optional time"
-  print "  weekly [time]       Set frequency to weekly with optional time"
-  print "  hourly              Set frequency to hourly"
-  print ""
-  print "Examples:"
-  print "  juvy schedule enable daily 02:00    # Daily backups at 2 AM"
-  print "  juvy schedule enable weekly         # Weekly backups (current time)"
-  print "  juvy schedule disable               # Turn off automated backups"
-  print "  juvy schedule status                # Check current settings"
-}
-
-
-_juvy_help() {
-  print "juvy $JUVY_VERSION - dotfile backup utility"
-  print ""
-  print "Usage: juvy <command>"
-  print ""
-  print "Commands:"
-  print "  init        Initialize juvy configuration"
-  print "  add         Add files/directories to backup list (or edit with \$EDITOR)"
-  print "              Files: 'add ~/.zshrc' or 'add /etc/hosts'"
-  print "              Directories: 'add ~/.config/nvim/' (with trailing slash)"
-  print "              Absolute paths: '/etc/hosts' (may require sudo for backup)"
-  print "              Home paths: '~/.zshrc' (recommended for dotfiles)"
-  print "  backup      Backup files and directories to configured directory"
-  print "  restore     Restore all files from latest backup"
-  print "  list        Show all tracked files and directories"
-  print "  status      Show changes since last backup"
-  print "              'status [file]' shows detailed diff for specific file"
-  print "  validate    Validate backup file without running backup"
-  print "  git         Run git commands in backup directory"
-  print "  remote      Manage git remote for backup synchronization"
-  print "              'remote <url>' sets remote and enables auto-sync"
-  print "              'remote' shows current remote status"
-  print "              'remote off' disables remote synchronization"
-  print "              'remote push' manually pushes to remote"
-  print "  schedule    Manage automated backup scheduling"
-  print "              'schedule enable' enables hourly backups (default)"
-  print "              'schedule enable daily 14:30' enables daily backups at 2:30 PM"
-  print "              'schedule disable' disables automated backups"
-  print "              'schedule status' shows current schedule"
-  print "  update      Update juvy to the latest version"
-  print "  version     Show version information"
-  print "  uninstall   Remove juvy from system (preserves backups)"
-  print "  nuke        Completely destroy juvy and all backups"
-  print ""
-  print "Backup File Format:"
-  print "  # Comments start with #"
-  print "  ~/.zshrc                  # Include files"
-  print "  ~/.config/nvim/           # Include directories (trailing /)"
-  print "  !~/.config/nvim/undo/     # Exclude patterns (prefix with !)"
-  print "  ~/.ssh/config             # Inline comments supported"
-  print ""
-}
