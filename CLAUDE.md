@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Rules
+
+- Do not use the users system and real configuration files to test during implementation or testing. Create temporary files and fixtures. We do not want to accidentally change or break the user's system. Place temporary files in @tests/tmp directory from the root of this project.
+
 ## Project Overview
 
 juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for versioned backups with smart defaults. It targets zsh environments with automatic detection of common dotfiles and stores backups in iCloud Drive by default for cross-device sync.
@@ -126,6 +130,7 @@ Supports advanced patterns:
 ### Backup and Restore Implementation
 
 **Backup Strategy (Two-Operation Approach)**:
+
 - **HOME directory sync**: Single rsync operation for all home directory files using include patterns
 - **SYSTEM directory sync**: Single rsync operation for all system files using include patterns  
 - **Pattern-based inclusion**: Uses `--include-from` with generated patterns for directories and files
@@ -133,6 +138,7 @@ Supports advanced patterns:
 - **Directory handling**: Generates hierarchical patterns (parent dirs + recursive `**` patterns) for proper directory inclusion
 
 **Restore Strategy (Single-Operation Approach)**:
+
 - **Bulk restore**: Single rsync operation copies entire backup structure back to filesystem
 - **Safety backups**: Creates timestamped backup of current files before restore
 - **Git exclusion**: Excludes `.git` directory from restore to avoid restoring backup metadata
@@ -140,7 +146,7 @@ Supports advanced patterns:
 
 ### Error Handling
 
-- Comprehensive rsync retry logic for transient errors (timeouts, I/O errors) 
+- Comprehensive rsync retry logic for transient errors (timeouts, I/O errors)
 - Both backup and restore operations include 3-retry mechanism with exponential backoff
 - Detailed error logging to `~/.config/juvy/log`
 - User-friendly error messages with actionable suggestions
@@ -151,7 +157,7 @@ Supports advanced patterns:
 Since there are no automated tests, when making changes:
 
 1. Test core workflow: `init` → `add` → `validate` → `backup` → `list` → `status` → `restore`
-2. Test backup operations: 
+2. Test backup operations:
    - Individual files and directories with trailing slashes
    - Include/exclude pattern filtering
    - Directory pattern generation and hierarchical inclusion
@@ -288,4 +294,3 @@ esac
 - ❌ `command -v cmd` → ✅ `(( $+commands[cmd] ))`
 - ❌ `$(grep pattern file)` tests → ✅ `grep -q pattern file`
 - ❌ Unquoted variables → ✅ `"$variable"`
-
