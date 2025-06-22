@@ -1,8 +1,0 @@
-# Global gitignore file
-.DS_Store
-*.log
-*.tmp
-.env
-node_modules/
-.vscode/
-.idea/

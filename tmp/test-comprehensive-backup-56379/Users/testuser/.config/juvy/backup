@@ -1,9 +1,0 @@
-# Comprehensive backup test entries
-~/.zshrc
-~/.gitconfig
-~/.config/nvim/
-!~/.config/nvim/undo/
-~/.config/git/
-~/.ssh/config
-/etc/hosts
-/usr/local/bin/test-script
