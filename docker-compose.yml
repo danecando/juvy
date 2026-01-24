@@ -9,16 +9,6 @@ services:
     working_dir: /workspace
     command: bats tests/bats
 
-  # Bash 3.2 compatibility tests (macOS default bash version)
-  test-bash32:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.bash32
-    volumes:
-      - .:/workspace
-    working_dir: /workspace
-    command: bats tests/bats
-
   # Interactive shell for debugging
   shell:
     build:
@@ -29,18 +19,4 @@ services:
     working_dir: /workspace
     stdin_open: true
     tty: true
-    command: /bin/bash
-
-  # Interactive shell with Bash 3.2 for debugging
-  shell-bash32:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.bash32
-    volumes:
-      - .:/workspace
-    working_dir: /workspace
-    stdin_open: true
-    tty: true
-    environment:
-      - JUVY_TEST_BASH=/usr/local/bash32/bin/bash
     command: /bin/bash
