@@ -69,7 +69,10 @@ echo "DEBUG: Sourced juvy.sh" >&2
 
 # Run backup
 echo "DEBUG: About to run juvy backup" >&2
-juvy backup >/dev/null
+if ! juvy backup; then
+  echo "DEBUG: juvy backup failed with exit code $?" >&2
+  exit 1
+fi
 echo "DEBUG: juvy backup completed" >&2
 
 # Verify expected files ARE backed up
