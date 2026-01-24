@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  # Docker-based tests - Ubuntu with system bash
-  test-docker:
+  # Ubuntu 22.04 with system bash (5.x)
+  test-ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
