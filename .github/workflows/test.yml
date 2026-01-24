@@ -57,7 +57,7 @@ jobs:
 
       - name: Install bats
         run: |
-          npm install -g bats
+          sudo npm install -g bats
           # Install helper libraries
           sudo mkdir -p /usr/local/lib/bats
           sudo git clone --depth 1 https://github.com/bats-core/bats-support.git /usr/local/lib/bats/bats-support

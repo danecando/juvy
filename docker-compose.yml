@@ -5,8 +5,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     volumes:
-      - .:/workspace:ro
-      - /workspace/docker  # Exclude docker dir from mount
+      - .:/workspace
     working_dir: /workspace
     command: bats tests/bats
 
@@ -16,11 +15,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.bash32
     volumes:
-      - .:/workspace:ro
-      - /workspace/docker
+      - .:/workspace
     working_dir: /workspace
-    environment:
-      - JUVY_TEST_BASH=/usr/local/bash32/bin/bash
     command: bats tests/bats
 
   # Interactive shell for debugging
