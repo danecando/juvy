@@ -4,16 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for versioned backups with smart defaults. It targets zsh environments with automatic detection of common dotfiles and stores backups in iCloud Drive by default for cross-device sync.
+juvy is a simple dotfile backup utility written in Bash (3.2 compatible) that uses rsync + git for versioned backups with smart defaults. It works with both bash and zsh environments, features automatic detection of common dotfiles, and supports macOS and Linux. Default backup directory is in iCloud Drive on macOS for cross-device sync.
 
 ## Architecture
 
 ### Core Structure
 
-- **Module + bundle architecture**: Source modules live in `src/` and are bundled into `juvy.zsh` via `scripts/build.sh`
-- **Function-based design**: All functionality is implemented as zsh functions with `_juvy_` prefix
+- **Module + bundle architecture**: Source modules live in `src/` and are bundled into `juvy.sh` via `scripts/build.sh`
+- **Function-based design**: All functionality is implemented as bash functions with `_juvy_` prefix
 - **Configuration-driven**: Uses files in `~/.config/juvy/` for configuration and state
 - **Git-based versioning**: Each backup creates a git commit for version history
+- **Bash 3.2 compatible**: No associative arrays or namerefs - uses individual global variables
+
+### Global State Variables
+
+```bash
+_JUVY_VERSION=""
+_JUVY_CONFIG_DIR=""
+_JUVY_CONFIG_FILE=""
+_JUVY_BACKUP_FILE=""
+_JUVY_LOG_FILE=""
+_JUVY_BACKUP_DIR=""
+_JUVY_REMOTE_URL=""
+_JUVY_REMOTE_PUSH=""
+_JUVY_REMOTE_NAME=""
+_JUVY_PLATFORM=""  # "macos" or "linux"
+
+# Global arrays for backup entry collection
+_JUVY_INCLUDE_PATHS=()
+_JUVY_EXCLUDE_PATTERNS=()
+```
 
 ### Key Components
 
@@ -22,8 +42,8 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
 **Path Resolution System**:
 
 - `_juvy_entry_to_source_path()` - Converts backup entries to filesystem paths
-- `_juvy_entry_to_backup_path()` - Maps entries to backup storage locations  
-- `_juvy_backup_path_to_entry()` - Reverse mapping from backup to entry format
+- `_juvy_entry_to_backup_path()` - Maps entries to backup storage locations
+- `_juvy_entry_to_relative_path()` - Converts entries to relative paths for rsync filters
 
 **Backup Processing**:
 
@@ -43,6 +63,12 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
 - `_juvy_remote_*()` functions handle git remote configuration and synchronization
 - Auto-push capability after each backup when configured
 
+**Cross-Platform Support**:
+
+- `_juvy_detect_platform()` - Detects macOS vs Linux
+- `_juvy_default_backup_dir()` - Returns platform-appropriate default backup directory
+- `_juvy_get_file_mtime()` / `_juvy_get_file_size()` - Cross-platform stat wrappers
+
 ## Configuration Files
 
 - `~/.config/juvy/config` - Shell variables for configuration (JUVY_BACKUP_DIR, remote settings)
@@ -58,10 +84,10 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
 
 ```bash
 # Run all integration tests
-for t in tests/integration/*.zsh; do zsh "$t"; done
+bash tests/run-tests.sh
 
 # Run a single test
-zsh tests/integration/test-single-backup.zsh
+bash tests/integration/test-single-backup.sh
 
 # Tests create isolated environments with:
 # - Temp HOME directory
@@ -88,7 +114,7 @@ juvy git log --oneline       # View backup history
 
 ```bash
 # Install from repository
-curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
+curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
 
 # Local development installation
 ./install.sh
@@ -97,13 +123,13 @@ curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 ### Building
 
 ```bash
-# Bundle src/ modules into juvy.zsh
+# Bundle src/ modules into juvy.sh
 ./scripts/build.sh
 ```
 
 ### Version Management
 
-- Version is hardcoded in `JUVY_VERSION` variable in juvy.zsh
+- Version is hardcoded in `_JUVY_VERSION` variable in src/00_header.sh
 - Update mechanism downloads from GitHub main branch
 
 ## Important Implementation Details
@@ -126,7 +152,7 @@ Supports advanced patterns:
 ~/.zshrc                    # Single file
 ~/.config/nvim/             # Directory (trailing slash required)
 
-# Exclusion patterns  
+# Exclusion patterns
 !~/.config/nvim/undo/       # Exclude undo directory
 !*.log                      # Exclude all .log files
 
@@ -145,7 +171,7 @@ Supports advanced patterns:
 
 **Backup Strategy (Two-Operation Approach)**:
 - **HOME directory sync**: Single rsync operation for all home directory files using filter rules
-- **SYSTEM directory sync**: Single rsync operation for all system files using filter rules  
+- **SYSTEM directory sync**: Single rsync operation for all system files using filter rules
 - **Filter-based inclusion/exclusion**: Ordered rsync filter rules (excludes take precedence over includes)
 - **Deletion management**: Uses `--delete` and `--delete-excluded` to maintain exact mirrors
 - **Directory handling**: Generates hierarchical parent-dir rules plus recursive `/***` includes for directory contents
@@ -166,20 +192,20 @@ Supports advanced patterns:
 ## Testing Strategy
 
 Integration tests exist in `tests/integration/`. Current coverage:
-- `test-single-backup.zsh` - Basic backup and restore cycle
-- `test-filter-excludes.zsh` - Include/exclude pattern filtering
-- `test-symlinks.zsh` - Symlink preservation during backup/restore
-- `test-missing-files.zsh` - Graceful handling of missing source files
-- `test-special-chars.zsh` - Filenames with spaces and special characters
-- `test-safety-backup.zsh` - Safety backup creation before restore
-- `test-restore-dry-run.zsh` - Dry-run restore functionality
-- `test-remove.zsh` - Remove command functionality
+- `test-single-backup.sh` - Basic backup and restore cycle
+- `test-filter-excludes.sh` - Include/exclude pattern filtering
+- `test-symlinks.sh` - Symlink preservation during backup/restore
+- `test-missing-files.sh` - Graceful handling of missing source files
+- `test-special-chars.sh` - Filenames with spaces and special characters
+- `test-safety-backup.sh` - Safety backup creation before restore
+- `test-restore-dry-run.sh` - Dry-run restore functionality
+- `test-remove.sh` - Remove command functionality
 
 When adding new functionality, add a corresponding test. Test structure:
 1. Create temp directory with `mktemp -d`
 2. Override `HOME` and `JUVY_CONFIG_DIR` for isolation
 3. Initialize git in backup directory
-4. Source `juvy.zsh`
+4. Source `juvy.sh`
 5. Run operations and assertions
 6. Clean up with `cleanup_dir`
 
@@ -188,7 +214,7 @@ When adding new functionality, add a corresponding test. Test structure:
 The tool supports optional git remote synchronization:
 
 - Prompted during `juvy init` but can be skipped
-- Supports SSH and HTTPS git URLs  
+- Supports SSH and HTTPS git URLs
 - Auto-push after each backup when enabled
 - Manual remote management via `juvy remote` commands
 
@@ -198,25 +224,17 @@ The tool supports optional git remote synchronization:
 - Configuration updates use `_juvy_update_config` and `_juvy_remove_config` utilities
 - Path validation happens before any operations via `_juvy_validate_path`
 - Rsync operations use specialized functions with error handling and user-friendly messages
-- User prompts follow consistent emoji-based formatting for better UX
 
-## Zsh Manual Reference
+## Bash 3.2 Compatibility Notes
 
-The complete zsh manual is available in the `zsh_html/` directory. When modifying or creating zsh scripts:
+This codebase targets Bash 3.2 (macOS default) which means:
 
-1. **Always reference the manual** for proper syntax and behavior verification
-2. **Key sections to consult**:
-   - `Shell-Grammar.html` - Basic shell syntax and structure
-   - `Functions.html` - Function definition and scoping
-   - `Parameters.html` - Variable handling and parameter expansion
-   - `Shell-Builtin-Commands.html` - Built-in command usage
-   - `Conditional-Expressions.html` - Test conditions and logic
-   - `Options.html` - Shell options and emulation modes
-3. **Use proper zsh idioms** rather than bash/POSIX equivalents when available
-4. **Verify syntax** against the manual before implementing new features
-5. **Check parameter expansion** syntax in `Parameter-Expansion.html`
+- **No associative arrays**: Use individual global variables instead
+- **No namerefs**: Use `eval` with proper quoting for indirect array access
+- **No negative array indices**: Use `${arr[${#arr[@]}-1]}` instead of `${arr[-1]}`
+- **Safe array expansion**: Use `${arr[@]+"${arr[@]}"}` pattern for empty arrays with `set -u`
 
-## Zsh Best Practices & Patterns
+## Bash Best Practices & Patterns
 
 ### Variable Handling
 
@@ -224,7 +242,7 @@ The complete zsh manual is available in the `zsh_html/` directory. When modifyin
 - **Quote assignments**: `VAR="$HOME/.config"` not `VAR=$HOME/.config`
 - **Use local variables in functions**: `local var` for function scope
 - **Parameter expansion**: Use `${VAR:-default}` for defaults
-- **Command existence**: Use `(( $+commands[cmd] ))` not `command -v cmd`
+- **Command existence**: Use `command -v cmd >/dev/null 2>&1`
 
 ### Conditional Expressions
 
@@ -241,20 +259,42 @@ The complete zsh manual is available in the `zsh_html/` directory. When modifyin
 - **Return values**: Use `return 0` (success) or `return 1` (failure)
 - **Error handling**: Check return values and handle appropriately
 
-### Case Statements (Zsh Style)
+### Case Statements (Bash Style)
 
-```zsh
+```bash
 case $var in
-  (pattern1)
+  pattern1)
     command1
     ;;
-  (pattern2|pattern3)
+  pattern2|pattern3)
     command2
     ;;
-  (*)
+  *)
     default_command
     ;;
 esac
+```
+
+### Array Handling (Bash 3.2)
+
+```bash
+# Declaration
+local arr=()
+arr=("item1" "item2" "item3")
+
+# Safe expansion with set -u
+for item in ${arr[@]+"${arr[@]}"}; do
+  echo "$item"
+done
+
+# Array length
+echo "${#arr[@]}"
+
+# Last element (Bash 3.2 compatible)
+echo "${arr[${#arr[@]}-1]}"
+
+# Append
+arr+=("new_item")
 ```
 
 ### Command Substitution & Quoting
@@ -264,46 +304,46 @@ esac
 - **Group commands**: Use `{ command1; command2; }` for grouping
 - **Proper quoting in loops**: `for file in "$@"; do`
 
-### Zsh-Specific Features
-
-- **Commands array**: `$+commands[name]` to check if command exists
-- **Enhanced globbing**: Enable with `setopt EXTENDED_GLOB`
-- **Parameter flags**: `${(flags)parameter}` for transformations
-- **Array handling**: `array=(item1 item2)`, `${array[@]}`
-- **Associative arrays**: `typeset -A assoc_array`
-
 ### Error Handling Patterns
 
-- **Check file existence**: `[[ -f "$file" ]] || { print "Error" >&2; return 1; }`
-- **Command success**: `command || { print "Failed" >&2; return 1; }`
+- **Check file existence**: `[[ -f "$file" ]] || { echo "Error" >&2; return 1; }`
+- **Command success**: `command || { echo "Failed" >&2; return 1; }`
 - **Directory creation**: `mkdir -p "$dir" || return 1`
 - **File operations**: Always check return values
 
-### Performance Patterns
+### Cross-Platform Patterns
 
-- **Avoid unnecessary subshells**: Use built-ins when possible
-- **Minimize external commands**: Use zsh built-ins over external tools
-- **Efficient loops**: Use zsh array operations
-- **Proper quoting**: Prevents word splitting overhead
+```bash
+# Platform detection
+case "$(uname -s)" in
+  Darwin) platform="macos" ;;
+  Linux)  platform="linux" ;;
+esac
+
+# Cross-platform stat
+case "$platform" in
+  macos) stat -f '%m' "$file" ;;  # mtime
+  *)     stat -c '%Y' "$file" ;;
+esac
+```
 
 ### Security Patterns
 
 - **Quote all user input**: Prevent injection attacks
 - **Use printf %q**: For shell-safe quoting `printf %q "$user_input"`
 - **Validate paths**: Check for expected patterns
-- **Avoid eval**: Use parameter expansion instead
+- **Avoid eval where possible**: Use parameter expansion instead
 
 ### Common Anti-Patterns to Avoid
 
-- ❌ `$@` → ✅ `"$@"`
-- ❌ `! [[ condition ]]` → ✅ `[[ ! condition ]]`
-- ❌ `"string")` in case → ✅ `(string)` in case
-- ❌ `command -v cmd` → ✅ `(( $+commands[cmd] ))`
-- ❌ `$(grep pattern file)` tests → ✅ `grep -q pattern file`
-- ❌ Unquoted variables → ✅ `"$variable"`
+- `$@` → `"$@"`
+- `${arr[-1]}` → `${arr[${#arr[@]}-1]}` (Bash 3.2)
+- `${arr[@]}` with set -u → `${arr[@]+"${arr[@]}"}`
+- Unquoted variables → `"$variable"`
+- `echo` for data → `printf '%s\n'`
 
-### Critical: Zsh Special Variables
+### Critical: Avoid Special Variable Names
 
-**NEVER use `path` as a variable name.** In zsh, `path` is a special array tied to `PATH`. Using it as a loop variable (`for path in ...`) overwrites PATH and breaks external command execution. Use `p`, `file_path`, `input_path`, etc. instead.
+**NEVER use `path` as a variable name** in scripts that may be sourced in zsh, as `path` is a special array tied to `PATH`. Use `p`, `file_path`, `input_path`, etc. instead.
 
-Other special lowercase variables to avoid: `cdpath`, `fpath`, `mailpath`, `manpath`.
+Other names to avoid: `cdpath`, `fpath`, `mailpath`, `manpath` (zsh special), `BASH_VERSINFO`, `BASH_VERSION`, `PIPESTATUS` (bash special).

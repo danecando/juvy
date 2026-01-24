@@ -7,17 +7,49 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # Ubuntu 22.04 with system bash (5.x)
+  test-ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install zsh
-        run: sudo apt-get update && sudo apt-get install -y zsh
-
-      - name: Run integration tests
+      - name: Build juvy.sh
         run: |
-          for t in tests/integration/*.zsh; do
-            echo "Running $t..."
-            zsh "$t"
-          done
+          if [[ -f scripts/build.sh ]]; then
+            bash scripts/build.sh
+          fi
+
+      - name: Build Docker image
+        run: docker compose build test
+
+      - name: Run tests
+        run: docker compose run --rm test
+
+  # macOS tests - Bash 3.2 compatibility (macOS default bash version)
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment info
+        run: |
+          echo "Bash version: $BASH_VERSION"
+          git --version
+          rsync --version | head -1
+
+      - name: Install bats
+        run: |
+          brew install bats-core
+          # Install helper libraries (not available as Homebrew formulas)
+          sudo mkdir -p /usr/local/lib/bats
+          sudo git clone --depth 1 https://github.com/bats-core/bats-support.git /usr/local/lib/bats/bats-support
+          sudo git clone --depth 1 https://github.com/bats-core/bats-assert.git /usr/local/lib/bats/bats-assert
+
+      - name: Build juvy.sh
+        run: |
+          if [[ -f scripts/build.sh ]]; then
+            bash scripts/build.sh
+          fi
+
+      - name: Run tests
+        run: bats tests/bats

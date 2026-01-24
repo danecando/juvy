@@ -15,9 +15,9 @@ jobs:
 
       - name: Check for uncommitted changes
         run: |
-          if ! git diff --quiet juvy.zsh; then
-            echo "ERROR: juvy.zsh is out of sync with src/"
+          if ! git diff --quiet juvy.sh; then
+            echo "ERROR: juvy.sh is out of sync with src/"
             echo "Run ./scripts/build.sh and commit the changes"
-            git diff juvy.zsh
+            git diff juvy.sh
             exit 1
           fi

@@ -1,0 +1,22 @@
+services:
+  # Standard Ubuntu tests with system bash
+  test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: bats tests/bats
+
+  # Interactive shell for debugging
+  shell:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /bin/bash

@@ -2,19 +2,19 @@
 
 Simple dotfile backup utility that uses rsync + git for versioned backups with smart defaults
 
-Targets zsh environments with automatic detection of common dotfiles. Default backup directory is in iCloud Drive for seamless cross-device sync.
+Works with bash and zsh environments. Features automatic detection of common dotfiles and cross-platform support (macOS and Linux). Default backup directory is in iCloud Drive on macOS for seamless cross-device sync.
 
 ## Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
-source ~/.zshrc
+curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
+source ~/.bashrc  # or source ~/.zshrc for zsh users
 ```
 
 The installer will:
 
 - Download the latest version
-- Add juvy to your `.zshrc`
+- Add juvy to your shell rc file (`.bashrc`, `.bash_profile`, or `.zshrc`)
 
 ## Quick Start
 
@@ -53,21 +53,21 @@ juvy list    # See what's being tracked
   # View backup history
   juvy git log --oneline
   juvy git log --graph --oneline --all
-  
+
   # See details of a specific backup
   juvy git show HEAD
   juvy git show <commit-hash>
-  
+
   # Check current git status
   juvy git status
-  
+
   # View differences between commits
   juvy git diff HEAD~1 HEAD
-  
+
   # Create a branch for testing
   juvy git checkout -b experiment
   juvy git checkout main
-  
+
   # Reset to a previous state (careful!)
   juvy git reset --hard <commit-hash>
   ```
@@ -103,6 +103,12 @@ juvy list    # See what's being tracked
   - Excludes take precedence over includes and apply within directories
 
 - **`~/.config/juvy/log`** - Error logging and operation history
+
+### Cross-Platform Default Backup Directory
+
+- **macOS with iCloud**: `~/Library/Mobile Documents/com~apple~CloudDocs/juvy`
+- **macOS without iCloud**: `~/.local/share/juvy`
+- **Linux**: `${XDG_DATA_HOME:-~/.local/share}/juvy`
 
 ## Backup Structure
 
@@ -154,7 +160,7 @@ juvy add ~/.ssh/config
 
 # View backup history and details
 juvy git log --oneline          # Compact history
-juvy git log --graph --oneline   # Visual branch history  
+juvy git log --graph --oneline   # Visual branch history
 juvy git show HEAD              # Latest backup details
 juvy git diff HEAD~1 HEAD       # Compare last two backups
 
@@ -194,20 +200,20 @@ juvy git push origin main         # Manual push
 Integration tests live in `tests/integration/`. Run all tests:
 
 ```bash
-for t in tests/integration/*.zsh; do zsh "$t"; done
+bash tests/run-tests.sh
 ```
 
 Run a single test:
 
 ```bash
-zsh tests/integration/test-single-backup.zsh
+bash tests/integration/test-single-backup.sh
 ```
 
-Each test creates an isolated environment using temporary directories and requires `zsh`, `git`, and `rsync`.
+Each test creates an isolated environment using temporary directories and requires `bash`, `git`, and `rsync`.
 
 ## Development
 
-Source modules live in `src/`. Bundle them into `juvy.zsh` with:
+Source modules live in `src/`. Bundle them into `juvy.sh` with:
 
 ```bash
 ./scripts/build.sh
