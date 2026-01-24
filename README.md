@@ -31,14 +31,15 @@ juvy list    # See what's being tracked
 - **`juvy init`** - Initialize juvy configuration with smart dotfile detection. Re-running allows changing settings with current values as defaults.
 - **`juvy add [files...]`** - Add files/directories to backup list. Without arguments, opens backup file in `$EDITOR`.
   - Files: `juvy add ~/.zshrc` or `juvy add /etc/hosts`
-  - Directories: `juvy add ~/.config/nvim/` (trailing slash required)
+  - Directories: `juvy add ~/.config/nvim/` (trailing slash optional)
   - Multiple files: `juvy add ~/.zshrc ~/.gitconfig`
-- **`juvy validate`** - Validate backup configuration without running backup
+- **`juvy remove [files...]`** - Remove files/directories from backup list. Without arguments, opens backup file in `$EDITOR`.
+- **`juvy doctor [--fix]`** - Validate juvy configuration and setup (use `--fix` for common repairs)
 
 ### Backup Operations
 
 - **`juvy backup`** - Backup all tracked files with git versioning
-- **`juvy restore`** - Restore all files from latest backup (creates safety backup first)
+- **`juvy restore [--dry-run]`** - Restore all files from latest backup (creates safety backup first)
 - **`juvy list`** - Show all tracked files and directories
 - **`juvy status [file]`** - Show changes since last backup
   - Without arguments: Shows summary of all changes
@@ -82,8 +83,8 @@ juvy list    # See what's being tracked
 
 - **`juvy update`** - Update juvy to the latest version
 - **`juvy version`** - Show version information
-- **`juvy uninstall`** - Remove juvy from system (preserves backups)
-- **`juvy nuke`** - Completely destroy juvy and all backups
+- **`juvy uninstall`** - Uninstall juvy (preserves backups)
+- **`juvy nuke`** - Uninstall juvy and remove all backups and configuration
 
 ## Configuration
 
@@ -161,7 +162,10 @@ juvy git diff HEAD~1 HEAD       # Compare last two backups
 juvy restore
 
 # Validate configuration
-juvy validate
+juvy doctor
+
+# Apply common repairs
+juvy doctor --fix
 ```
 
 ### Remote Git Synchronization
