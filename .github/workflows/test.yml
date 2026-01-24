@@ -40,7 +40,10 @@ jobs:
       - name: Install bats
         run: |
           brew install bats-core
-          brew install bats-support bats-assert
+          # Install helper libraries (not available as Homebrew formulas)
+          sudo mkdir -p /usr/local/lib/bats
+          sudo git clone --depth 1 https://github.com/bats-core/bats-support.git /usr/local/lib/bats/bats-support
+          sudo git clone --depth 1 https://github.com/bats-core/bats-assert.git /usr/local/lib/bats/bats-assert
 
       - name: Build juvy.sh
         run: |
@@ -49,7 +52,4 @@ jobs:
           fi
 
       - name: Run tests
-        env:
-          BATS_SUPPORT_DIR: /opt/homebrew/lib/bats-support
-          BATS_ASSERT_DIR: /opt/homebrew/lib/bats-assert
         run: bats tests/bats
