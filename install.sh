@@ -52,7 +52,7 @@ mkdir -p "$JUVY_DIR"
 
 # Download juvy script
 print_info "Downloading juvy..."
-if curl -sSL "$JUVY_REPO_BASE/juvy/juvy.zsh" -o "$JUVY_SCRIPT"; then
+if curl -sSL "$JUVY_REPO_BASE/juvy.zsh" -o "$JUVY_SCRIPT"; then
   print_success "Downloaded juvy to $JUVY_SCRIPT"
 else
   print_error "Failed to download juvy"

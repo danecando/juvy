@@ -14,11 +14,8 @@ FIXTURES_DIR="$(dirname $0)/../fixtures"
 mkdir -p "$HOME"
 cp "$FIXTURES_DIR/sample-dotfiles/.zshrc" "$HOME/.zshrc"
 
-# Prepare juvy config
+# Prepare juvy config - only JUVY_CONFIG_DIR env var is needed
 export JUVY_CONFIG_DIR="$HOME/.config/juvy"
-export JUVY_CONFIG="$JUVY_CONFIG_DIR/config"
-export JUVY_BACKUP="$JUVY_CONFIG_DIR/backup"
-export JUVY_LOG="$JUVY_CONFIG_DIR/log"
 mkdir -p "$JUVY_CONFIG_DIR"
 
 BACKUP_DIR="$TEST_ROOT/backup"
@@ -27,11 +24,11 @@ git init -b main "$BACKUP_DIR" >/dev/null 2>&1
 git -C "$BACKUP_DIR" config user.name "Test User"
 git -C "$BACKUP_DIR" config user.email "test@example.com"
 
-echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG"
-echo ".zshrc" > "$JUVY_BACKUP"
+echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
+echo "~/.zshrc" > "$JUVY_CONFIG_DIR/backup"
 
 # Source juvy
-source "$(dirname $0)/../../juvy/juvy.zsh"
+source "$(dirname $0)/../../juvy.zsh"
 
 # Run backup
 juvy backup >/dev/null

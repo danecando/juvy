@@ -10,7 +10,7 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
 
 ### Core Structure
 
-- **Single file architecture**: The entire application is contained in `juvy/juvy.zsh` (~2700 lines)
+- **Module + bundle architecture**: Source modules live in `src/` and are bundled into `juvy.zsh` via `scripts/build.sh`
 - **Function-based design**: All functionality is implemented as zsh functions with `_juvy_` prefix
 - **Configuration-driven**: Uses files in `~/.config/juvy/` for configuration and state
 - **Git-based versioning**: Each backup creates a git commit for version history
@@ -27,15 +27,15 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
 
 **Backup Processing**:
 
-- `_juvy_process_backup_entries()` - Main backup orchestration with include/exclude pattern support
-- `_juvy_rsync_with_includes()` - Advanced rsync operations with pattern-based inclusion and retry logic
-- `_juvy_add_directory_patterns()` and `_juvy_add_file_patterns()` - Generate rsync include patterns for proper directory/file handling
+- `_juvy_process_backup_entries()` - Main backup orchestration with include/exclude filter support
+- `_juvy_build_rsync_filter_file()` - Generates ordered rsync filter rules for include/exclude handling
+- `_juvy_rsync_backup_with_filters()` - Rsync backup with delete semantics and filter rules
 - `_juvy_parse_backup_entry()` - Parses backup file entries supporting comments and exclusions
 
 **Restore Processing**:
 
 - `_juvy_perform_restore()` - Main restore orchestration with safety backup creation
-- `_juvy_rsync_restore()` - Single-operation bulk restore with error handling and retry logic
+- `_juvy_rsync_restore_with_filters()` - Rsync restore using the same filter rules as backup
 - `_juvy_create_safety_backup()` - Creates timestamped safety backups before restore operations
 
 **Git Remote Integration**:
@@ -50,26 +50,38 @@ juvy is a simple dotfile backup utility written in Zsh that uses rsync + git for
   - Include patterns: `~/.zshrc`, `~/.config/nvim/`
   - Exclude patterns: `!~/.config/nvim/undo/`
   - Inline comments: `~/.zshrc # Main shell config`
-- `~/.config/juvy/log` - Error logging
+- `~/.config/juvy/log` - Operation logging (backup results, errors)
 
 ## Development Commands
 
 ### Testing
 
 ```bash
-# Manual testing - there's a manual_test/ directory but no automated tests
-# Test basic functionality:
+# Run all integration tests
+for t in tests/integration/*.zsh; do zsh "$t"; done
+
+# Run a single test
+zsh tests/integration/test-single-backup.zsh
+
+# Tests create isolated environments with:
+# - Temp HOME directory
+# - Temp backup directory with git initialized
+# - JUVY_CONFIG_DIR override
+# No risk of affecting real user data.
+```
+
+### Manual Testing
+
+```bash
+# Test core workflow:
 juvy init      # Initialize with auto-detection
-juvy validate  # Validate backup configuration  
+juvy validate  # Validate backup configuration
 juvy backup    # Create backup
 juvy list      # Verify tracked files
 juvy status    # Check for changes
 
 # Test git integration:
-juvy git status              # Check git status
 juvy git log --oneline       # View backup history
-juvy git show HEAD           # View latest backup details
-juvy git diff HEAD~1 HEAD    # Compare last two backups
 ```
 
 ### Installation
@@ -82,6 +94,13 @@ curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 ./install.sh
 ```
 
+### Building
+
+```bash
+# Bundle src/ modules into juvy.zsh
+./scripts/build.sh
+```
+
 ### Version Management
 
 - Version is hardcoded in `JUVY_VERSION` variable in juvy.zsh
@@ -91,11 +110,10 @@ curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | zsh
 
 ### Path Handling
 
-The system supports three path formats:
+The system supports two path formats:
 
-- Explicit tilde paths: `~/.zshrc`
+- Tilde paths: `~/.zshrc` (home-relative)
 - Absolute paths: `/etc/hosts`
-- Implicit home-relative: `.zshrc` (treated as `~/.zshrc`)
 
 All paths are stored in backup using their absolute filesystem structure (e.g., `/Users/user/.zshrc` → `{backup_dir}/Users/user/.zshrc`) for clean organization and simple restore operations.
 
@@ -126,45 +144,44 @@ Supports advanced patterns:
 ### Backup and Restore Implementation
 
 **Backup Strategy (Two-Operation Approach)**:
-- **HOME directory sync**: Single rsync operation for all home directory files using include patterns
-- **SYSTEM directory sync**: Single rsync operation for all system files using include patterns  
-- **Pattern-based inclusion**: Uses `--include-from` with generated patterns for directories and files
+- **HOME directory sync**: Single rsync operation for all home directory files using filter rules
+- **SYSTEM directory sync**: Single rsync operation for all system files using filter rules  
+- **Filter-based inclusion/exclusion**: Ordered rsync filter rules (excludes take precedence over includes)
 - **Deletion management**: Uses `--delete` and `--delete-excluded` to maintain exact mirrors
-- **Directory handling**: Generates hierarchical patterns (parent dirs + recursive `**` patterns) for proper directory inclusion
+- **Directory handling**: Generates hierarchical parent-dir rules plus recursive `/***` includes for directory contents
 
-**Restore Strategy (Single-Operation Approach)**:
-- **Bulk restore**: Single rsync operation copies entire backup structure back to filesystem
+**Restore Strategy (Two-Operation Approach)**:
+- **Targeted restore**: Restores only tracked paths via the same filter rules used for backup
 - **Safety backups**: Creates timestamped backup of current files before restore
 - **Git exclusion**: Excludes `.git` directory from restore to avoid restoring backup metadata
 - **Permission handling**: Uses `--ignore-errors` and treats partial transfers as success when data is transferred
 
 ### Error Handling
 
-- Comprehensive rsync retry logic for transient errors (timeouts, I/O errors) 
-- Both backup and restore operations include 3-retry mechanism with exponential backoff
-- Detailed error logging to `~/.config/juvy/log`
+- Operation logging to `~/.config/juvy/log` with timestamps
 - User-friendly error messages with actionable suggestions
 - Special handling for permission issues during restore operations
+- Single-attempt rsync operations (no retry logic)
 
 ## Testing Strategy
 
-Since there are no automated tests, when making changes:
+Integration tests exist in `tests/integration/`. Current coverage:
+- `test-single-backup.zsh` - Basic backup and restore cycle
+- `test-filter-excludes.zsh` - Include/exclude pattern filtering
+- `test-symlinks.zsh` - Symlink preservation during backup/restore
+- `test-missing-files.zsh` - Graceful handling of missing source files
+- `test-special-chars.zsh` - Filenames with spaces and special characters
+- `test-safety-backup.zsh` - Safety backup creation before restore
+- `test-restore-dry-run.zsh` - Dry-run restore functionality
+- `test-remove.zsh` - Remove command functionality
 
-1. Test core workflow: `init` → `add` → `validate` → `backup` → `list` → `status` → `restore`
-2. Test backup operations: 
-   - Individual files and directories with trailing slashes
-   - Include/exclude pattern filtering
-   - Directory pattern generation and hierarchical inclusion
-   - Deletion of files not in backup source
-3. Test restore operations:
-   - Bulk restore functionality with safety backup creation
-   - Permission handling on system directories
-   - Git metadata exclusion during restore
-4. Test edge cases: missing files, large directories, sensitive files
-5. Test git operations: commits, remote push/pull if configured
-6. Test error conditions: invalid paths, permission issues, network failures, rsync failures
-7. Verify path resolution works correctly for all three path formats
-8. Test retry logic for both backup and restore operations
+When adding new functionality, add a corresponding test. Test structure:
+1. Create temp directory with `mktemp -d`
+2. Override `HOME` and `JUVY_CONFIG_DIR` for isolation
+3. Initialize git in backup directory
+4. Source `juvy.zsh`
+5. Run operations and assertions
+6. Clean up with `cleanup_dir`
 
 ## Git Remote Features
 
@@ -180,11 +197,7 @@ The tool supports optional git remote synchronization:
 - All user-facing functions follow the `_juvy_<command>` naming pattern
 - Configuration updates use `_juvy_update_config` and `_juvy_remove_config` utilities
 - Path validation happens before any operations via `_juvy_validate_path`
-- Rsync operations use specialized functions with retry logic:
-  - `_juvy_rsync_with_includes()` for backup operations with pattern-based inclusion
-  - `_juvy_rsync_restore()` for restore operations with bulk copying
-- Pattern generation uses helper functions `_juvy_add_directory_patterns()` and `_juvy_add_file_patterns()`
-- All rsync functions include comprehensive error handling and user-friendly messages
+- Rsync operations use specialized functions with error handling and user-friendly messages
 - User prompts follow consistent emoji-based formatting for better UX
 
 ## Zsh Manual Reference
@@ -289,3 +302,8 @@ esac
 - ❌ `$(grep pattern file)` tests → ✅ `grep -q pattern file`
 - ❌ Unquoted variables → ✅ `"$variable"`
 
+### Critical: Zsh Special Variables
+
+**NEVER use `path` as a variable name.** In zsh, `path` is a special array tied to `PATH`. Using it as a loop variable (`for path in ...`) overwrites PATH and breaks external command execution. Use `p`, `file_path`, `input_path`, etc. instead.
+
+Other special lowercase variables to avoid: `cdpath`, `fpath`, `mailpath`, `manpath`.

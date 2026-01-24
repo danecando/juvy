@@ -99,6 +99,7 @@ juvy list    # See what's being tracked
   - Include patterns: `~/.zshrc`, `~/.config/nvim/`
   - Exclude patterns: `!~/.config/nvim/undo/`
   - Inline comments: `~/.zshrc # Main shell config`
+  - Excludes take precedence over includes and apply within directories
 
 - **`~/.config/juvy/log`** - Error logging and operation history
 
@@ -186,10 +187,24 @@ juvy git push origin main         # Manual push
 
 ## Testing
 
-A small test framework lives in the `tests` directory. To run all tests, execute:
+Integration tests live in `tests/integration/`. Run all tests:
 
 ```bash
-./tests/run-tests.sh
+for t in tests/integration/*.zsh; do zsh "$t"; done
 ```
 
-Each test creates an isolated environment using temporary directories and requires `zsh`, `git`, and `rsync` to be available on the system.
+Run a single test:
+
+```bash
+zsh tests/integration/test-single-backup.zsh
+```
+
+Each test creates an isolated environment using temporary directories and requires `zsh`, `git`, and `rsync`.
+
+## Development
+
+Source modules live in `src/`. Bundle them into `juvy.zsh` with:
+
+```bash
+./scripts/build.sh
+```
