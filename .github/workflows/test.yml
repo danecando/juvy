@@ -12,12 +12,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install zsh
-        run: sudo apt-get update && sudo apt-get install -y zsh
-
       - name: Run integration tests
-        run: |
-          for t in tests/integration/*.zsh; do
-            echo "Running $t..."
-            zsh "$t"
-          done
+        run: bash tests/run-tests.sh
