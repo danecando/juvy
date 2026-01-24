@@ -7,7 +7,44 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # Docker-based tests - Ubuntu with system bash
+  test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build juvy.sh
+        run: |
+          if [[ -f scripts/build.sh ]]; then
+            bash scripts/build.sh
+          fi
+
+      - name: Build Docker image
+        run: docker compose build test
+
+      - name: Run tests
+        run: docker compose run --rm test
+
+  # Docker-based tests - Bash 3.2 compatibility (macOS default)
+  test-bash32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build juvy.sh
+        run: |
+          if [[ -f scripts/build.sh ]]; then
+            bash scripts/build.sh
+          fi
+
+      - name: Build Bash 3.2 Docker image
+        run: docker compose build test-bash32
+
+      - name: Run Bash 3.2 compatibility tests
+        run: docker compose run --rm test-bash32
+
+  # Native runner tests as fallback (no Docker required)
+  test-native:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,5 +55,48 @@ jobs:
           git --version
           rsync --version | head -1
 
-      - name: Run integration tests
-        run: bash tests/run-tests.sh
+      - name: Install bats
+        run: |
+          npm install -g bats
+          # Install helper libraries
+          sudo mkdir -p /usr/local/lib/bats
+          sudo git clone --depth 1 https://github.com/bats-core/bats-support.git /usr/local/lib/bats/bats-support
+          sudo git clone --depth 1 https://github.com/bats-core/bats-assert.git /usr/local/lib/bats/bats-assert
+
+      - name: Build juvy.sh
+        run: |
+          if [[ -f scripts/build.sh ]]; then
+            bash scripts/build.sh
+          fi
+
+      - name: Run tests
+        run: bats tests/bats
+
+  # macOS tests (commented out - enable when needed)
+  # test-macos:
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Show environment info
+  #       run: |
+  #         echo "Bash version: $BASH_VERSION"
+  #         git --version
+  #         rsync --version | head -1
+  #
+  #     - name: Install bats
+  #       run: |
+  #         brew install bats-core
+  #         brew install bats-support bats-assert
+  #
+  #     - name: Build juvy.sh
+  #       run: |
+  #         if [[ -f scripts/build.sh ]]; then
+  #           bash scripts/build.sh
+  #         fi
+  #
+  #     - name: Run tests
+  #       env:
+  #         BATS_SUPPORT_DIR: /opt/homebrew/lib/bats-support
+  #         BATS_ASSERT_DIR: /opt/homebrew/lib/bats-assert
+  #       run: bats tests/bats
