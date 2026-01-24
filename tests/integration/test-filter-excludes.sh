@@ -7,7 +7,12 @@ set -e
 # 2. Exclude patterns (!path) block files from being backed up
 # 3. Directory excludes work correctly
 
+echo "DEBUG: Starting test, \$0=$0" >&2
+echo "DEBUG: dirname=\$(dirname \"\$0\")=$(dirname "$0")" >&2
+echo "DEBUG: PWD=$PWD" >&2
+
 source "$(dirname "$0")/../test-framework.sh"
+echo "DEBUG: Sourced test-framework.sh" >&2
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
