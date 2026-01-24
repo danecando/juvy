@@ -81,7 +81,7 @@ _juvy_doctor() {
 
   if [[ "$fix_mode" == "true" ]]; then
     local fixes=0
-    local juvy_script="$HOME/.juvy/juvy.sh"
+    local juvy_script="$HOME/.juvy/juvy"
 
     echo "Applying quick fixes..."
 
@@ -150,13 +150,13 @@ _juvy_doctor() {
         fi
       fi
 
-      if [[ -f "$rc_file" ]] && ! grep -q "source.*\\.juvy/juvy\\.sh" "$rc_file"; then
+      if [[ -f "$rc_file" ]] && ! grep -q '\.juvy' "$rc_file"; then
         {
           echo ""
           echo "# juvy dotfile backup tool"
-          echo "source $juvy_script"
+          echo 'export PATH="$HOME/.juvy:$PATH"'
         } >> "$rc_file"
-        echo "Added juvy source to $rc_file"
+        echo "Added juvy to PATH in $rc_file"
         (( ++fixes ))
       fi
     fi
@@ -297,10 +297,10 @@ _juvy_doctor() {
   # Shell integration
   local rc_file
   rc_file="$(_juvy_detect_rc_file)"
-  if [[ -f "$rc_file" ]] && grep -q "source.*\\.juvy/juvy\\.sh" "$rc_file"; then
-    echo "$rc_file loads juvy"
+  if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
+    echo "$rc_file adds juvy to PATH"
   else
-    echo "$rc_file does not source juvy (run install.sh or add source line)" >&2
+    echo "$rc_file does not add juvy to PATH (run install.sh)" >&2
     (( ++warnings ))
   fi
 

@@ -429,7 +429,7 @@ _juvy_git() {
 
 _juvy_update() {
   local temp_script="/tmp/juvy_update.sh"
-  local juvy_script="$HOME/.juvy/juvy.sh"
+  local juvy_script="$HOME/.juvy/juvy"
   local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy.sh"
   local latest_version update
 
@@ -464,9 +464,8 @@ _juvy_update() {
     return 0
   fi
 
-  if mv "$temp_script" "$juvy_script"; then
+  if mv "$temp_script" "$juvy_script" && chmod +x "$juvy_script"; then
     echo "Updated juvy to v$latest_version"
-    echo "Restart your shell or source your rc file"
   else
     echo "Failed to update juvy" >&2
     rm -f "$temp_script"
@@ -503,7 +502,7 @@ _juvy_nuke() {
 
   echo ""
   echo "juvy has been completely nuked from your system"
-  echo "Restart your shell or source your rc file"
+  echo "Restart your shell to complete removal"
 }
 
 _juvy_uninstall_internal() {
@@ -520,10 +519,10 @@ _juvy_uninstall_internal() {
   # Remove from shell rc files
   local rc_file
   for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    if [[ -f "$rc_file" ]] && grep -q "source.*\.juvy/juvy\.sh" "$rc_file"; then
+    if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
       # Create a temporary file without the juvy lines
       {
-        grep -v "source.*\.juvy/juvy\.sh" "$rc_file" | grep -v "# juvy dotfile backup tool"
+        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool"
       } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
       echo "Removed juvy from $rc_file"
     fi

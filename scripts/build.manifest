@@ -5,3 +5,4 @@ src/30_backup.sh
 src/40_utils.sh
 src/50_restore.sh
 src/60_git_remote.sh
+src/99_main.sh

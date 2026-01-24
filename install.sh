@@ -4,7 +4,7 @@
 set -e
 
 JUVY_DIR="$HOME/.juvy"
-JUVY_SCRIPT="$JUVY_DIR/juvy.sh"
+JUVY_SCRIPT="$JUVY_DIR/juvy"
 JUVY_REPO_BASE="https://raw.githubusercontent.com/danecando/juvy/main"
 
 print_error() {
@@ -82,22 +82,21 @@ chmod +x "$JUVY_SCRIPT"
 # Detect the appropriate rc file
 RC_FILE="$(detect_rc_file)"
 
-# Add to rc file if not already there
-if ! grep -q "source.*\.juvy/juvy\.sh" "$RC_FILE" 2>/dev/null; then
-  print_info "Adding juvy to $RC_FILE..."
+# Add to PATH in rc file if not already there
+if ! grep -q '\.juvy' "$RC_FILE" 2>/dev/null; then
+  print_info "Adding juvy to PATH in $RC_FILE..."
   {
     echo ""
     echo "# juvy dotfile backup tool"
-    echo "source $JUVY_SCRIPT"
+    echo 'export PATH="$HOME/.juvy:$PATH"'
   } >> "$RC_FILE"
-  print_success "Added juvy to $RC_FILE"
+  print_success "Added juvy to PATH in $RC_FILE"
 else
   print_info "juvy already in $RC_FILE"
 fi
 
-# Source juvy for immediate use
-# shellcheck disable=SC1090
-source "$JUVY_SCRIPT"
+# Add to current PATH for immediate use
+export PATH="$JUVY_DIR:$PATH"
 
 # Check for existing configuration
 if [[ -f "$HOME/.config/juvy/config" ]] && [[ -f "$HOME/.config/juvy/backup" ]]; then
@@ -106,11 +105,11 @@ if [[ -f "$HOME/.config/juvy/config" ]] && [[ -f "$HOME/.config/juvy/backup" ]];
 else
   echo ""
   print_info "Setup complete! Next steps:"
-  echo "  1. Restart your shell or run: source $RC_FILE"
+  echo "  1. Restart your shell"
   echo "  2. Configure juvy: juvy init"
   echo "  3. Start backing up: juvy backup"
 fi
 
 echo ""
 print_success "juvy installation complete!"
-print_info "Restart your shell or run: source $RC_FILE"
+print_info "Restart your shell"

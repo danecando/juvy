@@ -775,7 +775,7 @@ _juvy_uninstall() {
   echo ""
   echo "juvy has been removed from your system"
   echo "Your backups are preserved in: $_JUVY_BACKUP_DIR"
-  echo "Restart your shell or source your rc file"
+  echo "Restart your shell to complete removal"
 }
 
 _juvy_validate_config_file() {
@@ -1078,7 +1078,7 @@ _juvy_doctor() {
 
   if [[ "$fix_mode" == "true" ]]; then
     local fixes=0
-    local juvy_script="$HOME/.juvy/juvy.sh"
+    local juvy_script="$HOME/.juvy/juvy"
 
     echo "Applying quick fixes..."
 
@@ -1147,13 +1147,13 @@ _juvy_doctor() {
         fi
       fi
 
-      if [[ -f "$rc_file" ]] && ! grep -q "source.*\\.juvy/juvy\\.sh" "$rc_file"; then
+      if [[ -f "$rc_file" ]] && ! grep -q '\.juvy' "$rc_file"; then
         {
           echo ""
           echo "# juvy dotfile backup tool"
-          echo "source $juvy_script"
+          echo 'export PATH="$HOME/.juvy:$PATH"'
         } >> "$rc_file"
-        echo "Added juvy source to $rc_file"
+        echo "Added juvy to PATH in $rc_file"
         (( ++fixes ))
       fi
     fi
@@ -1294,10 +1294,10 @@ _juvy_doctor() {
   # Shell integration
   local rc_file
   rc_file="$(_juvy_detect_rc_file)"
-  if [[ -f "$rc_file" ]] && grep -q "source.*\\.juvy/juvy\\.sh" "$rc_file"; then
-    echo "$rc_file loads juvy"
+  if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
+    echo "$rc_file adds juvy to PATH"
   else
-    echo "$rc_file does not source juvy (run install.sh or add source line)" >&2
+    echo "$rc_file does not add juvy to PATH (run install.sh)" >&2
     (( ++warnings ))
   fi
 
@@ -1806,7 +1806,7 @@ _juvy_git() {
 
 _juvy_update() {
   local temp_script="/tmp/juvy_update.sh"
-  local juvy_script="$HOME/.juvy/juvy.sh"
+  local juvy_script="$HOME/.juvy/juvy"
   local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy.sh"
   local latest_version update
 
@@ -1841,9 +1841,8 @@ _juvy_update() {
     return 0
   fi
 
-  if mv "$temp_script" "$juvy_script"; then
+  if mv "$temp_script" "$juvy_script" && chmod +x "$juvy_script"; then
     echo "Updated juvy to v$latest_version"
-    echo "Restart your shell or source your rc file"
   else
     echo "Failed to update juvy" >&2
     rm -f "$temp_script"
@@ -1880,7 +1879,7 @@ _juvy_nuke() {
 
   echo ""
   echo "juvy has been completely nuked from your system"
-  echo "Restart your shell or source your rc file"
+  echo "Restart your shell to complete removal"
 }
 
 _juvy_uninstall_internal() {
@@ -1897,10 +1896,10 @@ _juvy_uninstall_internal() {
   # Remove from shell rc files
   local rc_file
   for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    if [[ -f "$rc_file" ]] && grep -q "source.*\.juvy/juvy\.sh" "$rc_file"; then
+    if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
       # Create a temporary file without the juvy lines
       {
-        grep -v "source.*\.juvy/juvy\.sh" "$rc_file" | grep -v "# juvy dotfile backup tool"
+        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool"
       } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
       echo "Removed juvy from $rc_file"
     fi
@@ -3141,4 +3140,11 @@ _juvy_remove_config() {
   fi
 }
 
+
+## MAIN ENTRY POINT ############################################################
+
+# When executed directly (not sourced), run the juvy command
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  juvy "$@"
+fi
 
