@@ -1,0 +1,23 @@
+name: Build Verification
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run build
+        run: ./scripts/build.sh
+
+      - name: Check for uncommitted changes
+        run: |
+          if ! git diff --quiet juvy.zsh; then
+            echo "ERROR: juvy.zsh is out of sync with src/"
+            echo "Run ./scripts/build.sh and commit the changes"
+            git diff juvy.zsh
+            exit 1
+          fi

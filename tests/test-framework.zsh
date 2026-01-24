@@ -1,5 +1,18 @@
 #!/usr/bin/env zsh
 # Basic testing utilities for juvy
+#
+# Test Environment Setup:
+#   juvy uses a single global (_JUVY_CONFIG) and respects the JUVY_CONFIG_DIR
+#   environment variable for test isolation. Tests should:
+#
+#   1. Create a temp directory: TEST_ROOT=$(mktemp -d)
+#   2. Override HOME: export HOME="$TEST_ROOT/home"
+#   3. Set config dir: export JUVY_CONFIG_DIR="$HOME/.config/juvy"
+#   4. Create config/backup files in $JUVY_CONFIG_DIR/
+#   5. Source juvy.zsh
+#   6. Clean up with: cleanup_dir "$TEST_ROOT"
+#
+#   No other environment variables need to be set.
 
 setopt errexit
 setopt nounset
