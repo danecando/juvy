@@ -31,7 +31,7 @@ echo "~/.zshrc" > "$JUVY_CONFIG_DIR/backup"
 source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
-juvy backup >/dev/null
+juvy backup
 
 BACKUP_PATH="$BACKUP_DIR$HOME/.zshrc"
 
@@ -41,7 +41,7 @@ assert_files_identical "$HOME/.zshrc" "$BACKUP_PATH"
 # Remove original and restore
 rm "$HOME/.zshrc"
 
-echo y | juvy restore >/dev/null
+echo y | juvy restore
 
 assert_file_exists "$HOME/.zshrc"
 assert_files_identical "$HOME/.zshrc" "$BACKUP_PATH"

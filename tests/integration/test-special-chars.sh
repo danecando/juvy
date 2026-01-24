@@ -31,7 +31,7 @@ echo "~/my config file.txt" > "$JUVY_CONFIG_DIR/backup"
 source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
-juvy backup >/dev/null
+juvy backup
 
 # Verify file with spaces was backed up correctly
 BACKUP_PATH="$BACKUP_DIR$HOME/my config file.txt"
@@ -41,7 +41,7 @@ assert_files_identical "$SPACE_FILE" "$BACKUP_PATH"
 # Delete original and restore
 rm "$SPACE_FILE"
 
-echo y | juvy restore >/dev/null
+echo y | juvy restore
 
 # Verify file was restored with correct name
 assert_file_exists "$SPACE_FILE"

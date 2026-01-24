@@ -31,7 +31,7 @@ echo "~/.testfile" > "$JUVY_CONFIG_DIR/backup"
 source "$(dirname "$0")/../../juvy.sh"
 
 # Run initial backup
-juvy backup >/dev/null
+juvy backup
 
 # Modify the file
 MODIFIED_CONTENT="modified content version 2"
@@ -46,7 +46,7 @@ if [[ "$(cat "$HOME/.testfile")" != "$MODIFIED_CONTENT" ]]; then
 fi
 
 # Run restore with 'y' confirmation
-echo y | juvy restore >/dev/null
+echo y | juvy restore
 
 # Verify safety backup directory was created
 SAFETY_BACKUP_BASE="$JUVY_CONFIG_DIR/safety-backup"

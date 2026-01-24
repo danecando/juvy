@@ -32,7 +32,7 @@ echo "~/.my-symlink" > "$JUVY_CONFIG_DIR/backup"
 source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
-juvy backup >/dev/null
+juvy backup
 
 BACKUP_PATH="$BACKUP_DIR$HOME/.my-symlink"
 
@@ -60,7 +60,7 @@ fi
 # Delete symlink and restore
 rm "$HOME/.my-symlink"
 
-echo y | juvy restore >/dev/null
+echo y | juvy restore
 
 # Verify symlink is restored
 assert_file_exists "$HOME/.my-symlink"

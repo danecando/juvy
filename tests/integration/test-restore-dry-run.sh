@@ -33,7 +33,7 @@ echo "~/.zshrc" > "$JUVY_CONFIG_DIR/backup"
 source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup first
-juvy backup >/dev/null
+juvy backup
 
 # Modify the source file
 echo "# Modified content" >> "$HOME/.zshrc"
