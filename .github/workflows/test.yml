@@ -12,5 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show environment info
+        run: |
+          echo "Bash version: $BASH_VERSION"
+          git --version
+          rsync --version | head -1
+
       - name: Run integration tests
         run: bash tests/run-tests.sh
