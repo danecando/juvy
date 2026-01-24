@@ -1,14 +1,14 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Load testing utilities
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
 mkdir -p "$HOME"
 
-FIXTURES_DIR="$(dirname $0)/../fixtures"
+FIXTURES_DIR="$(dirname "$0")/../fixtures"
 
 # Copy fixture dotfile
 mkdir -p "$HOME"
@@ -28,7 +28,7 @@ echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
 echo "~/.zshrc" > "$JUVY_CONFIG_DIR/backup"
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
 juvy backup >/dev/null

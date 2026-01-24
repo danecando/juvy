@@ -1,19 +1,20 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
-emulate -L zsh
-setopt nullglob
+
 BASE_DIR="$(dirname "$0")"
 PASS=0
 FAIL=0
 
-for test_file in "$BASE_DIR"/unit/*.zsh "$BASE_DIR"/integration/*.zsh; do
+shopt -s nullglob
+
+for test_file in "$BASE_DIR"/unit/*.sh "$BASE_DIR"/integration/*.sh; do
   [ -f "$test_file" ] || continue
   echo "Running $(basename "$test_file")"
-  if zsh "$test_file"; then
-    echo "✔ $(basename "$test_file")"
+  if bash "$test_file"; then
+    echo "OK $(basename "$test_file")"
     PASS=$((PASS+1))
   else
-    echo "✖ $(basename "$test_file")" >&2
+    echo "FAILED $(basename "$test_file")" >&2
     FAIL=$((FAIL+1))
   fi
   echo

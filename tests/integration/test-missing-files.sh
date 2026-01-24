@@ -1,8 +1,8 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Load testing utilities
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
@@ -30,7 +30,7 @@ cat > "$JUVY_CONFIG_DIR/backup" << 'EOF'
 EOF
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup and capture output
 OUTPUT=$(juvy backup 2>&1)

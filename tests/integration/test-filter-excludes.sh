@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Test filter generation and exclude patterns
@@ -7,7 +7,7 @@ set -e
 # 2. Exclude patterns (!path) block files from being backed up
 # 3. Directory excludes work correctly
 
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
@@ -51,7 +51,7 @@ cat > "$JUVY_CONFIG_DIR/backup" << 'EOF'
 EOF
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
 juvy backup >/dev/null

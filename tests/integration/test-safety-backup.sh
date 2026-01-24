@@ -1,8 +1,8 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Load testing utilities
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
@@ -28,7 +28,7 @@ echo "$ORIGINAL_CONTENT" > "$HOME/.testfile"
 echo "~/.testfile" > "$JUVY_CONFIG_DIR/backup"
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run initial backup
 juvy backup >/dev/null
@@ -57,8 +57,12 @@ if [[ ! -d "$SAFETY_BACKUP_BASE" ]]; then
   exit 1
 fi
 
-# Find the timestamped safety backup directory
-SAFETY_DIRS=("$SAFETY_BACKUP_BASE"/*(/N))
+# Find the timestamped safety backup directory (Bash 3.2 compatible)
+SAFETY_DIRS=()
+for d in "$SAFETY_BACKUP_BASE"/*/; do
+  [[ -d "$d" ]] && SAFETY_DIRS+=("$d")
+done
+
 if [[ ${#SAFETY_DIRS[@]} -eq 0 ]]; then
   echo "No timestamped safety backup directory found" >&2
   cleanup_dir "$TEST_ROOT"
@@ -66,8 +70,8 @@ if [[ ${#SAFETY_DIRS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# Use most recent safety backup
-SAFETY_DIR="${SAFETY_DIRS[-1]}"
+# Use most recent safety backup (last element - Bash 3.2 compatible)
+SAFETY_DIR="${SAFETY_DIRS[${#SAFETY_DIRS[@]}-1]}"
 
 # Verify safety backup contains the modified version (pre-restore state)
 # Find the actual safety backup file (path includes the tilde from entry)

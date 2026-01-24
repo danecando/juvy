@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/scripts/build.manifest"
-out="$repo_root/juvy.zsh"
+out="$repo_root/juvy.sh"
 
 if [[ ! -f "$manifest" ]]; then
   echo "Missing build manifest: $manifest" >&2

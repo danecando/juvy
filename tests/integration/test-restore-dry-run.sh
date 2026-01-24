@@ -1,16 +1,16 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Test restore --dry-run functionality
 # Verifies that dry-run mode shows what would be restored without making changes
 
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
 mkdir -p "$HOME"
 
-FIXTURES_DIR="$(dirname $0)/../fixtures"
+FIXTURES_DIR="$(dirname "$0")/../fixtures"
 
 # Copy fixture dotfile
 mkdir -p "$HOME"
@@ -30,7 +30,7 @@ echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
 echo "~/.zshrc" > "$JUVY_CONFIG_DIR/backup"
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup first
 juvy backup >/dev/null

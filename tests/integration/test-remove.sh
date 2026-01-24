@@ -1,7 +1,7 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
@@ -27,10 +27,11 @@ echo "test3" > "$HOME/.config/testdir/file.txt"
 # Add entries to backup file
 printf '%s\n' '~/.testrc1' '~/.testrc2' '~/.config/testdir/' > "$JUVY_CONFIG_DIR/backup"
 
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Test 1: Verify initial state
 line_count=$(wc -l < "$JUVY_CONFIG_DIR/backup")
+line_count="${line_count#"${line_count%%[![:space:]]*}"}"  # trim whitespace
 if [[ $line_count -ne 3 ]]; then
   echo "Expected 3 lines in backup file, got $line_count" >&2
   cleanup_dir "$TEST_ROOT"
@@ -78,6 +79,7 @@ fi
 
 # Test 5: Verify only ~/.testrc2 remains
 line_count=$(wc -l < "$JUVY_CONFIG_DIR/backup")
+line_count="${line_count#"${line_count%%[![:space:]]*}"}"  # trim whitespace
 if [[ $line_count -ne 1 ]]; then
   echo "Expected 1 line in backup file after removals, got $line_count" >&2
   cleanup_dir "$TEST_ROOT"

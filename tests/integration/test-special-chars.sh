@@ -1,8 +1,8 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # Load testing utilities
-source "$(dirname $0)/../test-framework.zsh"
+source "$(dirname "$0")/../test-framework.sh"
 
 TEST_ROOT=$(mktemp -d)
 export HOME="$TEST_ROOT/home"
@@ -28,7 +28,7 @@ echo "content with spaces" > "$SPACE_FILE"
 echo "~/my config file.txt" > "$JUVY_CONFIG_DIR/backup"
 
 # Source juvy
-source "$(dirname $0)/../../juvy.zsh"
+source "$(dirname "$0")/../../juvy.sh"
 
 # Run backup
 juvy backup >/dev/null

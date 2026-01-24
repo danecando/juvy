@@ -13,61 +13,61 @@ _juvy_entry_to_source_path() {
   local resolved_path
 
   case "$entry" in
-    (\~/*)
+    \~/*)
       # Explicit home-relative: ~/path -> $HOME/path
       resolved_path="${HOME}${entry#\~}"
       ;;
-    (/*)
+    /*)
       # Absolute path: /etc/hosts -> /etc/hosts
       resolved_path="$entry"
       ;;
-    (*)
+    *)
       # Invalid format - not home-relative (~/) or absolute (/)
-      print "❌ Invalid path format: $entry" >&2
-      print "   Use ~/path for home-relative or /path for absolute" >&2
+      echo "Invalid path format: $entry" >&2
+      echo "   Use ~/path for home-relative or /path for absolute" >&2
       return 1
       ;;
   esac
 
-  print "$resolved_path"
+  echo "$resolved_path"
 }
 
 _juvy_entry_to_backup_path() {
   local entry="$1"
   local source_path backup_path
-  
-  source_path="$(_juvy_entry_to_source_path "$entry")"
-  
-  # Map to backup using absolute path structure
-  backup_path="${_JUVY_CONFIG[backup_dir]}$source_path"
 
-  print "$backup_path"
+  source_path="$(_juvy_entry_to_source_path "$entry")"
+
+  # Map to backup using absolute path structure
+  backup_path="$_JUVY_BACKUP_DIR$source_path"
+
+  echo "$backup_path"
 }
 
 _juvy_entry_to_relative_path() {
   local entry="$1"
   local base_root="$2"
   local resolved_path
-  
+
   resolved_path="$(_juvy_entry_to_source_path "$entry")"
-  
+
   if [[ "$base_root" == "$HOME" ]]; then
     if [[ "$resolved_path" == "$HOME/"* ]]; then
-      print "${resolved_path#$HOME/}"
+      echo "${resolved_path#$HOME/}"
       return 0
     fi
     return 1
   fi
-  
+
   if [[ "$resolved_path" == "$HOME/"* ]]; then
     return 1
   fi
-  
+
   if [[ "$resolved_path" == /* ]]; then
-    print "${resolved_path#/}"
+    echo "${resolved_path#/}"
     return 0
   fi
-  
+
   return 1
 }
 
@@ -75,11 +75,12 @@ _juvy_add_parent_rules() {
   local dir_path="$1"
   local path_parts=()
   local current_path=""
-  
+  local part
+
   [[ -z "$dir_path" ]] && return 0
-  
-  IFS='/' read -rA path_parts <<< "$dir_path"
-  
+
+  IFS='/' read -ra path_parts <<< "$dir_path"
+
   for part in "${path_parts[@]}"; do
     [[ -z "$part" ]] && continue
     if [[ -n "$current_path" ]]; then
@@ -87,7 +88,7 @@ _juvy_add_parent_rules() {
     else
       current_path="$part"
     fi
-    print "+ /$current_path/"
+    echo "+ /$current_path/"
   done
 }
 
@@ -95,12 +96,12 @@ _juvy_add_include_rules() {
   local relative_path="$1"
   local is_dir="$2"
   local clean_path="${relative_path%/}"
-  
+
   if [[ "$is_dir" == "true" ]]; then
-    print "+ /$clean_path/"
-    print "+ /$clean_path/***"
+    echo "+ /$clean_path/"
+    echo "+ /$clean_path/***"
   else
-    print "+ /$relative_path"
+    echo "+ /$relative_path"
   fi
 }
 
@@ -110,38 +111,37 @@ _juvy_add_exclude_rules() {
   local clean_path="${relative_path%/}"
 
   if [[ "$is_dir" == "true" ]]; then
-    print -r -- "- /$clean_path/"
-    print -r -- "- /$clean_path/***"
+    printf '%s\n' "- /$clean_path/"
+    printf '%s\n' "- /$clean_path/***"
   else
-    print -r -- "- /$relative_path"
+    printf '%s\n' "- /$relative_path"
   fi
 }
 
+# Write unique rules to filter file (Bash 3.2 compatible dedup using string)
 _juvy_write_unique_rules() {
   local output_file="$1"
   shift
-  local -A seen
+  local seen_rules=""
   local rule
 
   for rule in "$@"; do
     [[ -z "$rule" ]] && continue
-    if [[ -z "${seen[$rule]}" ]]; then
-      print -r -- "$rule" >> "$output_file"
-      seen[$rule]=1
+    # Check if rule already seen (using string matching)
+    if [[ "$seen_rules" != *"|$rule|"* ]]; then
+      printf '%s\n' "$rule" >> "$output_file"
+      seen_rules="$seen_rules|$rule|"
     fi
   done
 }
 
-# Collects backup entries from ${_JUVY_CONFIG[backup_file]}, separating includes and excludes.
-# Uses zsh-compatible array assignment via 'set -A' instead of bash namerefs.
+# Collects backup entries from $_JUVY_BACKUP_FILE, separating includes and excludes.
+# Populates global arrays _JUVY_INCLUDE_PATHS and _JUVY_EXCLUDE_PATTERNS
 _juvy_collect_backup_entries() {
-  local include_ref="$1"
-  local exclude_ref="$2"
   local entry parsed_data entry_type entry_path
-  local -a _temp_includes _temp_excludes
 
-  _temp_includes=()
-  _temp_excludes=()
+  _JUVY_INCLUDE_PATHS=()
+  _JUVY_EXCLUDE_PATTERNS=()
 
   while IFS= read -r entry; do
     entry="$(_juvy_parse_entry_basic "$entry")" || continue
@@ -151,15 +151,11 @@ _juvy_collect_backup_entries() {
     entry_path="$(_juvy_extract_parsed_field "$parsed_data" "path" "")"
 
     if [[ "$entry_type" == "include" ]]; then
-      _temp_includes+=("$entry_path")
+      _JUVY_INCLUDE_PATHS+=("$entry_path")
     elif [[ "$entry_type" == "exclude" ]]; then
-      _temp_excludes+=("$entry_path")
+      _JUVY_EXCLUDE_PATTERNS+=("$entry_path")
     fi
-  done < "${_JUVY_CONFIG[backup_file]}"
-
-  # Assign to caller's arrays using zsh 'set -A'
-  set -A "$include_ref" "${_temp_includes[@]}"
-  set -A "$exclude_ref" "${_temp_excludes[@]}"
+  done < "$_JUVY_BACKUP_FILE"
 }
 
 # Builds an rsync filter file from include/exclude patterns.
@@ -173,32 +169,35 @@ _juvy_collect_backup_entries() {
 # This ordering ensures excludes take precedence over includes. For example:
 #   ~/.config/nvim/        -> included
 #   !~/.config/nvim/undo/  -> excluded (processed before the include's recursive rule)
-#
-# Uses zsh-compatible eval instead of bash namerefs for array access.
 _juvy_build_rsync_filter_file() {
   local base_root="$1"
-  local include_ref="$2"
-  local exclude_ref="$3"
+  local include_array_name="$2"
+  local exclude_array_name="$3"
   local filter_file="$4"
-  local extra_exclude_ref="${5:-}"
+  local extra_exclude_array_name="${5:-}"
 
-  # Copy arrays using eval (zsh-compatible alternative to namerefs)
-  local -a includes excludes extra_excludes
-  eval "includes=(\"\${${include_ref}[@]}\")"
-  eval "excludes=(\"\${${exclude_ref}[@]}\")"
+  # Copy arrays using eval (Bash 3.2 compatible)
+  # Use safe expansion pattern to handle empty arrays
+  local includes=()
+  local excludes=()
+  local extra_excludes=()
+  eval "includes=(\"\${${include_array_name}[@]+\"\${${include_array_name}[@]}\"}\")"
+  eval "excludes=(\"\${${exclude_array_name}[@]+\"\${${exclude_array_name}[@]}\"}\")"
 
-  if [[ -n "$extra_exclude_ref" ]]; then
-    eval "extra_excludes=(\"\${${extra_exclude_ref}[@]}\")"
+  if [[ -n "$extra_exclude_array_name" ]]; then
+    eval "extra_excludes=(\"\${${extra_exclude_array_name}[@]+\"\${${extra_exclude_array_name}[@]}\"}\")"
   fi
 
-  local -a parent_rules include_rules exclude_rules
-  local entry relative_path parent_path is_dir clean_path
+  local parent_rules=()
+  local include_rules=()
+  local exclude_rules=()
+  local entry relative_path parent_path is_dir clean_path rule
 
   # Start with root directory rule
   parent_rules=("+ /")
 
   # Process include patterns
-  for entry in "${includes[@]}"; do
+  for entry in ${includes[@]+"${includes[@]}"}; do
     if ! relative_path="$(_juvy_entry_to_relative_path "$entry" "$base_root")"; then
       continue
     fi
@@ -212,14 +211,26 @@ _juvy_build_rsync_filter_file() {
     clean_path="${relative_path%/}"
     parent_path="${clean_path%/*}"
     if [[ "$parent_path" != "$clean_path" && -n "$parent_path" ]]; then
-      parent_rules+=("${(@f)$(_juvy_add_parent_rules "$parent_path")}")
+      while IFS= read -r rule; do
+        parent_rules+=("$rule")
+      done < <(_juvy_add_parent_rules "$parent_path")
     fi
 
-    include_rules+=("${(@f)$(_juvy_add_include_rules "$relative_path" "$is_dir")}")
+    while IFS= read -r rule; do
+      include_rules+=("$rule")
+    done < <(_juvy_add_include_rules "$relative_path" "$is_dir")
   done
 
-  # Process exclude patterns
-  for entry in "${excludes[@]}" "${extra_excludes[@]}"; do
+  # Process exclude patterns - handle empty arrays safely
+  local all_excludes=()
+  for entry in ${excludes[@]+"${excludes[@]}"}; do
+    all_excludes+=("$entry")
+  done
+  for entry in ${extra_excludes[@]+"${extra_excludes[@]}"}; do
+    all_excludes+=("$entry")
+  done
+
+  for entry in ${all_excludes[@]+"${all_excludes[@]}"}; do
     if ! relative_path="$(_juvy_entry_to_relative_path "$entry" "$base_root")"; then
       continue
     fi
@@ -229,121 +240,125 @@ _juvy_build_rsync_filter_file() {
       is_dir="true"
     fi
 
-    exclude_rules+=("${(@f)$(_juvy_add_exclude_rules "$relative_path" "$is_dir")}")
+    while IFS= read -r rule; do
+      exclude_rules+=("$rule")
+    done < <(_juvy_add_exclude_rules "$relative_path" "$is_dir")
   done
 
   # Write filter file with correct ordering
   : > "$filter_file"
-  _juvy_write_unique_rules "$filter_file" "${parent_rules[@]}"  # 1. Parents
-  _juvy_write_unique_rules "$filter_file" "${exclude_rules[@]}" # 2. Excludes
-  _juvy_write_unique_rules "$filter_file" "${include_rules[@]}" # 3. Includes
-  print -r -- "- *" >> "$filter_file"                            # 4. Exclude rest
+  _juvy_write_unique_rules "$filter_file" ${parent_rules[@]+"${parent_rules[@]}"}   # 1. Parents
+  _juvy_write_unique_rules "$filter_file" ${exclude_rules[@]+"${exclude_rules[@]}"} # 2. Excludes
+  _juvy_write_unique_rules "$filter_file" ${include_rules[@]+"${include_rules[@]}"} # 3. Includes
+  printf '%s\n' "- *" >> "$filter_file"                                              # 4. Exclude rest
 }
 
 
 _juvy_process_backup_entries() {
-  local -a include_paths exclude_patterns home_paths system_paths
+  local home_paths=()
+  local system_paths=()
   local entry source_path
   local home_count=0 system_count=0
-  
-  print "📋 Processing backup entries..."
-  
-  _juvy_collect_backup_entries include_paths exclude_patterns
-  
-  print "ℹ️  Processing ${#include_paths[@]} paths"
-  
-  for entry in "${include_paths[@]}"; do
+
+  echo "Processing backup entries..."
+
+  _juvy_collect_backup_entries
+
+  echo "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
+
+  for entry in ${_JUVY_INCLUDE_PATHS[@]+"${_JUVY_INCLUDE_PATHS[@]}"}; do
     source_path="$(_juvy_entry_to_source_path "$entry")"
-    
+
     if [[ "$entry" == */ ]]; then
       if [[ ! -d "$source_path" ]]; then
-        print "⚠️  Directory not found: $source_path" >&2
+        echo "Directory not found: $source_path" >&2
         continue
       fi
     else
       if [[ ! -f "$source_path" ]]; then
-        print "⚠️  File not found: $source_path" >&2
+        echo "File not found: $source_path" >&2
         continue
       fi
     fi
-    
+
     if [[ "$source_path" == "$HOME/"* ]]; then
       home_paths+=("$entry")
     else
       system_paths+=("$entry")
     fi
   done
-  
-  if (( ${#home_paths[@]} > 0 )); then
-    print "🏠 Backing up ${#home_paths[@]} home paths..."
-    
+
+  if [[ ${#home_paths[@]} -gt 0 ]]; then
+    echo "Backing up ${#home_paths[@]} home paths..."
+
     local temp_filter_file
     temp_filter_file="$(mktemp)"
-    
-    if ! _juvy_build_rsync_filter_file "$HOME" home_paths exclude_patterns "$temp_filter_file"; then
-      print "❌ Failed to build filter file for home paths" >&2
+
+    if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
+      echo "Failed to build filter file for home paths" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
-    if ! mkdir -p "${_JUVY_CONFIG[backup_dir]}$HOME/" > /dev/null 2>&1; then
-      print "❌ Failed to create backup directory for home paths" >&2
+
+    if ! mkdir -p "$_JUVY_BACKUP_DIR$HOME/" > /dev/null 2>&1; then
+      echo "Failed to create backup directory for home paths" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
-    if ! _juvy_rsync_backup_with_filters "$HOME/" "${_JUVY_CONFIG[backup_dir]}$HOME/" "$temp_filter_file"; then
-      print "❌ Failed to backup home paths" >&2
+
+    if ! _juvy_rsync_backup_with_filters "$HOME/" "$_JUVY_BACKUP_DIR$HOME/" "$temp_filter_file"; then
+      echo "Failed to backup home paths" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
+
     rm -f "$temp_filter_file"
     home_count=${#home_paths[@]}
   fi
-  
-  if (( ${#system_paths[@]} > 0 )); then
-    print "🖥️  Backing up ${#system_paths[@]} system paths..."
-    
+
+  if [[ ${#system_paths[@]} -gt 0 ]]; then
+    echo "Backing up ${#system_paths[@]} system paths..."
+
     local temp_filter_file
     temp_filter_file="$(mktemp)"
-    
-    if ! _juvy_build_rsync_filter_file "/" system_paths exclude_patterns "$temp_filter_file"; then
-      print "❌ Failed to build filter file for system paths" >&2
+
+    if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
+      echo "Failed to build filter file for system paths" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
-    if ! mkdir -p "${_JUVY_CONFIG[backup_dir]}" > /dev/null 2>&1; then
-      print "❌ Failed to create backup directory" >&2
+
+    if ! mkdir -p "$_JUVY_BACKUP_DIR" > /dev/null 2>&1; then
+      echo "Failed to create backup directory" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
-    if ! _juvy_rsync_backup_with_filters "/" "${_JUVY_CONFIG[backup_dir]}" "$temp_filter_file"; then
-      print "❌ Failed to backup system paths" >&2
+
+    if ! _juvy_rsync_backup_with_filters "/" "$_JUVY_BACKUP_DIR" "$temp_filter_file"; then
+      echo "Failed to backup system paths" >&2
       rm -f "$temp_filter_file"
       return 1
     fi
-    
+
     rm -f "$temp_filter_file"
     system_count=${#system_paths[@]}
   fi
-  
-  print "ℹ️  Processed $home_count home and $system_count system paths"
+
+  echo "Processed $home_count home and $system_count system paths"
   return 0
 }
 
 # Displays filter file contents for debugging rsync issues
 _juvy_show_filter_debug() {
   local filter_file="$1"
+  local line
 
-  print "📋 Filter file contents (for debugging):" >&2
-  print "   ----------------------------------------" >&2
+  echo "Filter file contents (for debugging):" >&2
+  echo "   ----------------------------------------" >&2
   while IFS= read -r line; do
-    print "   $line" >&2
+    echo "   $line" >&2
   done < "$filter_file"
-  print "   ----------------------------------------" >&2
+  echo "   ----------------------------------------" >&2
 }
 
 _juvy_rsync_backup_with_filters() {
@@ -362,7 +377,7 @@ _juvy_rsync_restore_with_filters() {
   local dest="$2"
   local filter_file="$3"
   local dry_run="${4:-false}"
-  local -a rsync_args
+  local rsync_args=()
 
   # Build rsync arguments
   # Use --ignore-times to force copy even when backup files are older than current files
@@ -384,7 +399,7 @@ _juvy_rsync_restore_with_filters() {
 
 
 _juvy_timestamp() {
-  /bin/date "+%Y-%m-%d %H:%M:%S"
+  date "+%Y-%m-%d %H:%M:%S"
 }
 
 _juvy_log() {
@@ -394,11 +409,11 @@ _juvy_log() {
   timestamp="$(_juvy_timestamp)"
 
   # Ensure log directory exists
-  if [[ ! -d "${_JUVY_CONFIG[config_dir]}" ]]; then
-    mkdir -p "${_JUVY_CONFIG[config_dir]}" > /dev/null 2>&1
+  if [[ ! -d "$_JUVY_CONFIG_DIR" ]]; then
+    mkdir -p "$_JUVY_CONFIG_DIR" > /dev/null 2>&1
   fi
 
-  print "[$timestamp] $message" >> "${_JUVY_CONFIG[log_file]}"
+  echo "[$timestamp] $message" >> "$_JUVY_LOG_FILE"
 }
 
 _juvy_log_error() {
@@ -407,53 +422,53 @@ _juvy_log_error() {
 
 
 _juvy_git() {
-  if [[ -d "${_JUVY_CONFIG[backup_dir]}" ]]; then
-    git -C "${_JUVY_CONFIG[backup_dir]}" "$@"
+  if [[ -d "$_JUVY_BACKUP_DIR" ]]; then
+    git -C "$_JUVY_BACKUP_DIR" "$@"
   fi
 }
 
 _juvy_update() {
-  local temp_script="/tmp/juvy_update.zsh"
-  local juvy_script="$HOME/.juvy/juvy.zsh"
-  local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy.zsh"
+  local temp_script="/tmp/juvy_update.sh"
+  local juvy_script="$HOME/.juvy/juvy.sh"
+  local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy.sh"
   local latest_version update
-  
-  print "Checking for updates..."
-  
+
+  echo "Checking for updates..."
+
   if ! curl -sSL "$repo_url" -o "$temp_script"; then
-    print "❌ Failed to download latest version" >&2
+    echo "Failed to download latest version" >&2
     return 1
   fi
-  
-  latest_version=$(grep "^JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
-  
+
+  latest_version=$(grep "^_JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
+
   if [[ -z "$latest_version" ]]; then
-    print "❌ Failed to extract version from downloaded script" >&2
+    echo "Failed to extract version from downloaded script" >&2
     rm -f "$temp_script"
     return 1
   fi
-  
-  if [[ "$latest_version" == "${_JUVY_CONFIG[version]}" ]]; then
-    print "✅ juvy is already up to date (v${_JUVY_CONFIG[version]})"
+
+  if [[ "$latest_version" == "$_JUVY_VERSION" ]]; then
+    echo "juvy is already up to date (v$_JUVY_VERSION)"
     rm -f "$temp_script"
     return 0
   fi
-  
-  print "📦 Update available: v${_JUVY_CONFIG[version]} → v$latest_version"
-  print "Do you want to update? [Y/n] "
-  read -r "update?"
-  
+
+  echo "Update available: v$_JUVY_VERSION -> v$latest_version"
+  echo -n "Do you want to update? [Y/n] "
+  read -r update
+
   if [[ "$update" == "n" ]]; then
-    print "Update cancelled"
+    echo "Update cancelled"
     rm -f "$temp_script"
     return 0
   fi
-  
+
   if mv "$temp_script" "$juvy_script"; then
-    print "✅ Updated juvy to v$latest_version"
-    print "ℹ️  Restart your shell or run: source ~/.zshrc"
+    echo "Updated juvy to v$latest_version"
+    echo "Restart your shell or source your rc file"
   else
-    print "❌ Failed to update juvy" >&2
+    echo "Failed to update juvy" >&2
     rm -f "$temp_script"
     return 1
   fi
@@ -461,74 +476,77 @@ _juvy_update() {
 
 _juvy_nuke() {
   local confirm
-  
-  print "🚨 WARNING: This will COMPLETELY DESTROY all juvy data including:"
-  print "  • Configuration directory: ${_JUVY_CONFIG[config_dir]}"
-  print "  • Backup directory: ${_JUVY_CONFIG[backup_dir]}"
-  print "  • Installation directory: $HOME/.juvy"
-  print "  • juvy entry from ~/.zshrc"
-  print ""
-  print "💥 ALL YOUR BACKUPS WILL BE DELETED!"
-  print "❗ This action cannot be undone!"
-  print "Are you absolutely sure? [y/N] "
-  read -r "confirm?"
-  
+
+  echo "WARNING: This will COMPLETELY DESTROY all juvy data including:"
+  echo "  - Configuration directory: $_JUVY_CONFIG_DIR"
+  echo "  - Backup directory: $_JUVY_BACKUP_DIR"
+  echo "  - Installation directory: $HOME/.juvy"
+  echo "  - juvy entry from shell rc file"
+  echo ""
+  echo "ALL YOUR BACKUPS WILL BE DELETED!"
+  echo "This action cannot be undone!"
+  echo -n "Are you absolutely sure? [y/N] "
+  read -r confirm
+
   if [[ "$confirm" != "y" ]]; then
-    print "Nuke cancelled"
+    echo "Nuke cancelled"
     return 0
   fi
-  
+
   # Call rm function first (removes config, installation, .zshrc)
   _juvy_uninstall_internal
-  
-  if [[ -d "${_JUVY_CONFIG[backup_dir]}" ]]; then
-    rm -rf "${_JUVY_CONFIG[backup_dir]}"
-    print "💥 Nuked backup directory"
+
+  if [[ -d "$_JUVY_BACKUP_DIR" ]]; then
+    rm -rf "$_JUVY_BACKUP_DIR"
+    echo "Nuked backup directory"
   fi
-  
-  print ""
-  print "💥 juvy has been completely nuked from your system"
-  print "ℹ️  Restart your shell or run: source ~/.zshrc"
+
+  echo ""
+  echo "juvy has been completely nuked from your system"
+  echo "Restart your shell or source your rc file"
 }
 
 _juvy_uninstall_internal() {
-  if [[ -d "${_JUVY_CONFIG[config_dir]}" ]]; then
-    rm -rf "${_JUVY_CONFIG[config_dir]}"
-    print "🗑️  Removed configuration directory"
+  if [[ -d "$_JUVY_CONFIG_DIR" ]]; then
+    rm -rf "$_JUVY_CONFIG_DIR"
+    echo "Removed configuration directory"
   fi
-  
+
   if [[ -d "$HOME/.juvy" ]]; then
     rm -rf "$HOME/.juvy"
-    print "🗑️  Removed installation directory"
+    echo "Removed installation directory"
   fi
-  
-  # Remove from .zshrc
-  if [[ -f "$HOME/.zshrc" ]] && grep -q "source.*\.juvy/juvy\.zsh" "$HOME/.zshrc"; then
-    # Create a temporary file without the juvy lines
-    {
-      grep -v "source.*\.juvy/juvy\.zsh" "$HOME/.zshrc" | grep -v "# juvy dotfile backup tool"
-    } > "$HOME/.zshrc.tmp" && mv "$HOME/.zshrc.tmp" "$HOME/.zshrc"
-    print "🗑️  Removed juvy from .zshrc"
-  fi
+
+  # Remove from shell rc files
+  local rc_file
+  for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    if [[ -f "$rc_file" ]] && grep -q "source.*\.juvy/juvy\.sh" "$rc_file"; then
+      # Create a temporary file without the juvy lines
+      {
+        grep -v "source.*\.juvy/juvy\.sh" "$rc_file" | grep -v "# juvy dotfile backup tool"
+      } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
+      echo "Removed juvy from $rc_file"
+    fi
+  done
 }
 
 _juvy_is_sensitive_file() {
   local file="$1"
-  local -a sensitive_patterns
-  
-  sensitive_patterns=(
+  local filename="${file##*/}"  # basename
+  local sensitive_patterns=(
     "*id_rsa*" "*id_ed25519*" "*id_ecdsa*"  # SSH keys
     "*.pem" "*.key" "*.cert"                 # Certificates
     "*credentials*" "*token*" "*secret*"     # Credentials
     "*.env" ".env.*"                         # Environment files
     "*auth*" "*passwd*"                      # Auth files
   )
-  
+
   local pattern
   for pattern in "${sensitive_patterns[@]}"; do
-    if [[ "${file:t}" == ${~pattern} ]]; then
-      return 0
-    fi
+    # Use case statement for pattern matching (Bash 3.2 compatible)
+    case "$filename" in
+      $pattern) return 0 ;;
+    esac
   done
   return 1
 }
@@ -536,23 +554,23 @@ _juvy_is_sensitive_file() {
 _juvy_show_security_warning() {
   local file="$1"
   local choice
-  
-  print "🔒 Security Warning: This appears to be a sensitive file"
-  print "   File: $file"
-  print ""
-  print "Backing up to cloud storage may expose sensitive data."
-  print "Options:"
-  print "  1) Cancel (recommended)"
-  print "  2) Continue anyway"
-  print ""
-  print -n "Choice [1-2]: "
-  read -r "choice?"
-  
+
+  echo "Security Warning: This appears to be a sensitive file"
+  echo "   File: $file"
+  echo ""
+  echo "Backing up to cloud storage may expose sensitive data."
+  echo "Options:"
+  echo "  1) Cancel (recommended)"
+  echo "  2) Continue anyway"
+  echo ""
+  echo -n "Choice [1-2]: "
+  read -r choice
+
   case "$choice" in
-    (2)
+    2)
       return 0
       ;;
-    (*)
+    *)
       return 1
       ;;
   esac
@@ -572,7 +590,7 @@ _juvy_validate_path() {
   fi
 
   if [[ ! -e "$full_path" ]]; then
-    print "❌ Path does not exist: $input_path" >&2
+    echo "Path does not exist: $input_path" >&2
     return 1
   fi
 
@@ -606,11 +624,11 @@ _juvy_calculate_directory_info() {
   fi
 
   # Calculate size in bytes using du (try -sb first, fallback to -sk for macOS)
-  size_bytes=$(/usr/bin/du -sb "$full_path" 2>/dev/null | /usr/bin/cut -f1)
+  size_bytes=$(du -sb "$full_path" 2>/dev/null | cut -f1)
   if [[ -z "$size_bytes" ]]; then
     # macOS doesn't support -sb, use -sk and convert to bytes
     local size_kb
-    size_kb=$(/usr/bin/du -sk "$full_path" 2>/dev/null | /usr/bin/cut -f1)
+    size_kb=$(du -sk "$full_path" 2>/dev/null | cut -f1)
     [[ -n "$size_kb" ]] && size_bytes=$((size_kb * 1024)) || size_bytes=0
   fi
 
@@ -626,12 +644,12 @@ _juvy_calculate_directory_info() {
   fi
 
   # Count files (not directories)
-  file_count=$(/usr/bin/find "$full_path" -type f 2>/dev/null | /usr/bin/wc -l)
+  file_count=$(find "$full_path" -type f 2>/dev/null | wc -l)
   [[ -z "$file_count" ]] && file_count=0
   file_count="${file_count#"${file_count%%[![:space:]]*}"}"
 
   # Return colon-separated string (no globals)
-  print "$size_bytes:$size_human:$file_count"
+  echo "$size_bytes:$size_human:$file_count"
 }
 
 # Parse directory info string returned by _juvy_calculate_directory_info.
@@ -641,73 +659,74 @@ _juvy_parse_dir_info() {
   local field="$2"
 
   case "$field" in
-    (bytes)
-      print "${info%%:*}"
+    bytes)
+      echo "${info%%:*}"
       ;;
-    (human)
+    human)
       local rest="${info#*:}"
-      print "${rest%%:*}"
+      echo "${rest%%:*}"
       ;;
-    (count)
-      print "${info##*:}"
+    count)
+      echo "${info##*:}"
       ;;
   esac
 }
 
 _juvy_prompt_large_directory() {
-  local path="$1"
-  local size_human="$2" 
+  local path_arg="$1"
+  local size_human="$2"
   local file_count="$3"
   local force="$4"
   local response
-  
+
   if [[ "$force" == "true" ]]; then
     return 0
   fi
-  
-  print "⚠️  This directory contains:"
-  print "   Files: $file_count"
-  print "   Size: $size_human"
-  print ""
-  print "Large backups may be slow and consume significant storage."
-  print "Continue? [y/N] "
-  read -r "response?"
-  
+
+  echo "This directory contains:"
+  echo "   Files: $file_count"
+  echo "   Size: $size_human"
+  echo ""
+  echo "Large backups may be slow and consume significant storage."
+  echo -n "Continue? [y/N] "
+  read -r response
+
   if [[ "$response" != "y" && "$response" != "Y" ]]; then
     return 1
   fi
-  
+
   return 0
 }
 
 _juvy_add() {
   local paths=()
-  
+  local p
+
   _juvy_validate_backup_file_exists || return 1
-  
+
   # Parse path arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      (-*)
-        print "❌ Unknown flag: $1" >&2
-        print "Usage: juvy add [path...]" >&2
+      -*)
+        echo "Unknown flag: $1" >&2
+        echo "Usage: juvy add [path...]" >&2
         return 1
         ;;
-      (*)
+      *)
         paths+=("$1")
         shift
         ;;
     esac
   done
-  
+
   if [[ ${#paths[@]} -eq 0 ]]; then
     # No arguments, open in editor
     local editor="${EDITOR:-nano}"
-    if (( $+commands[$editor] )); then
-      "$editor" "${_JUVY_CONFIG[backup_file]}"
-      print "💡 Consider running 'juvy doctor' to check your backup file"
+    if command -v "$editor" >/dev/null 2>&1; then
+      "$editor" "$_JUVY_BACKUP_FILE"
+      echo "Consider running 'juvy doctor' to check your backup file"
     else
-      print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
+      echo "Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
       return 1
     fi
   else
@@ -735,7 +754,7 @@ _juvy_add() {
         # Absolute path - use as-is
         backup_entry="$full_path"
       else
-        print "❌ Invalid path format: $p. Accepted formats: absolute paths (e.g., /path/to/file), home-relative paths (e.g., ~/file), or paths relative to the current directory." >&2
+        echo "Invalid path format: $p. Accepted formats: absolute paths (e.g., /path/to/file), home-relative paths (e.g., ~/file), or paths relative to the current directory." >&2
         continue
       fi
 
@@ -747,19 +766,19 @@ _juvy_add() {
         fi
 
         # Check if path is already in backup file
-        if grep -Fxq "$backup_entry" "${_JUVY_CONFIG[backup_file]}" 2>/dev/null; then
-          print "ℹ️  Path already in backup list: $backup_entry"
+        if grep -Fxq "$backup_entry" "$_JUVY_BACKUP_FILE" 2>/dev/null; then
+          echo "Path already in backup list: $backup_entry"
           continue
         fi
 
         # Check for sensitive files
         if _juvy_is_sensitive_file "$backup_entry"; then
           if ! _juvy_show_security_warning "$backup_entry"; then
-            print "❌ Skipped adding sensitive directory: $p"
+            echo "Skipped adding sensitive directory: $p"
             continue
           fi
         fi
-        
+
         # For directories, check size and prompt if needed
         local dir_info
         if dir_info="$(_juvy_calculate_directory_info "$p")"; then
@@ -770,38 +789,38 @@ _juvy_add() {
           # Check if directory is larger than 100MB (104857600 bytes)
           if (( size_bytes > 104857600 )); then
             if ! _juvy_prompt_large_directory "$p" "$size_human" "$file_count" "false"; then
-              print "❌ Skipped adding large directory: $p"
+              echo "Skipped adding large directory: $p"
               continue
             fi
           fi
         fi
-        
-        print "$backup_entry" >> "${_JUVY_CONFIG[backup_file]}"
-        print "✅ Added directory '$backup_entry' to backup list"
-        
+
+        echo "$backup_entry" >> "$_JUVY_BACKUP_FILE"
+        echo "Added directory '$backup_entry' to backup list"
+
       elif [[ -f "$full_path" ]]; then
         # File - ensure it doesn't end with /
         backup_entry="${backup_entry%/}"
-        
+
         # Check if path is already in backup file
-        if grep -Fxq "$backup_entry" "${_JUVY_CONFIG[backup_file]}" 2>/dev/null; then
-          print "ℹ️  Path already in backup list: $backup_entry"
+        if grep -Fxq "$backup_entry" "$_JUVY_BACKUP_FILE" 2>/dev/null; then
+          echo "Path already in backup list: $backup_entry"
           continue
         fi
-        
+
         # Check for sensitive files
         if _juvy_is_sensitive_file "$backup_entry"; then
           if ! _juvy_show_security_warning "$backup_entry"; then
-            print "❌ Skipped adding sensitive file: $p"
+            echo "Skipped adding sensitive file: $p"
             continue
           fi
         fi
-        
-        print "$backup_entry" >> "${_JUVY_CONFIG[backup_file]}"
-        print "✅ Added file '$backup_entry' to backup list"
+
+        echo "$backup_entry" >> "$_JUVY_BACKUP_FILE"
+        echo "Added file '$backup_entry' to backup list"
 
       else
-        print "❌ Path not found: $p" >&2
+        echo "Path not found: $p" >&2
         continue
       fi
     done
@@ -810,18 +829,19 @@ _juvy_add() {
 
 _juvy_remove() {
   local paths=()
+  local p
 
   _juvy_validate_backup_file_exists || return 1
 
   # Parse path arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      (-*)
-        print "❌ Unknown flag: $1" >&2
-        print "Usage: juvy remove [path...]" >&2
+      -*)
+        echo "Unknown flag: $1" >&2
+        echo "Usage: juvy remove [path...]" >&2
         return 1
         ;;
-      (*)
+      *)
         paths+=("$1")
         shift
         ;;
@@ -831,11 +851,11 @@ _juvy_remove() {
   if [[ ${#paths[@]} -eq 0 ]]; then
     # No arguments, open in editor
     local editor="${EDITOR:-nano}"
-    if (( $+commands[$editor] )); then
-      "$editor" "${_JUVY_CONFIG[backup_file]}"
-      print "💡 Consider running 'juvy doctor' to check your backup file"
+    if command -v "$editor" >/dev/null 2>&1; then
+      "$editor" "$_JUVY_BACKUP_FILE"
+      echo "Consider running 'juvy doctor' to check your backup file"
     else
-      print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
+      echo "Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
       return 1
     fi
   else
@@ -863,25 +883,26 @@ _juvy_remove() {
       local found=false
       local entry_to_remove=""
 
-      if grep -Fxq "$backup_entry" "${_JUVY_CONFIG[backup_file]}" 2>/dev/null; then
+      if grep -Fxq "$backup_entry" "$_JUVY_BACKUP_FILE" 2>/dev/null; then
         entry_to_remove="$backup_entry"
         found=true
-      elif grep -Fxq "${backup_entry}/" "${_JUVY_CONFIG[backup_file]}" 2>/dev/null; then
+      elif grep -Fxq "${backup_entry}/" "$_JUVY_BACKUP_FILE" 2>/dev/null; then
         entry_to_remove="${backup_entry}/"
         found=true
-      elif grep -Fxq "${backup_entry%/}" "${_JUVY_CONFIG[backup_file]}" 2>/dev/null; then
+      elif grep -Fxq "${backup_entry%/}" "$_JUVY_BACKUP_FILE" 2>/dev/null; then
         entry_to_remove="${backup_entry%/}"
         found=true
       fi
 
       if [[ "$found" == "true" ]]; then
         # Remove the entry from backup file
-        grep -Fxv "$entry_to_remove" "${_JUVY_CONFIG[backup_file]}" > "${_JUVY_CONFIG[backup_file]}.tmp"
-        mv "${_JUVY_CONFIG[backup_file]}.tmp" "${_JUVY_CONFIG[backup_file]}"
-        print "✅ Removed '$entry_to_remove' from backup list"
+        grep -Fxv "$entry_to_remove" "$_JUVY_BACKUP_FILE" > "$_JUVY_BACKUP_FILE.tmp"
+        mv "$_JUVY_BACKUP_FILE.tmp" "$_JUVY_BACKUP_FILE"
+        echo "Removed '$entry_to_remove' from backup list"
       else
-        print "ℹ️  Path not in backup list: $p"
+        echo "Path not in backup list: $p"
       fi
     done
   fi
 }
+

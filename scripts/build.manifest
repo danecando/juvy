@@ -1,7 +1,7 @@
-src/00_header.zsh
-src/10_config.zsh
-src/20_commands.zsh
-src/30_backup.zsh
-src/40_utils.zsh
-src/50_restore.zsh
-src/60_git_remote.zsh
+src/00_header.sh
+src/10_config.sh
+src/20_commands.sh
+src/30_backup.sh
+src/40_utils.sh
+src/50_restore.sh
+src/60_git_remote.sh
