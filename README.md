@@ -1,20 +1,15 @@
 # juvy
 
-Simple dotfile backup utility that uses rsync + git for versioned backups with smart defaults
+Simple dotfile backup utility using rsync + git for versioned backups.
 
-Works with bash and zsh environments. Features automatic detection of common dotfiles and cross-platform support (macOS and Linux). Default backup directory is in iCloud Drive on macOS for seamless cross-device sync.
+Works with bash and zsh on macOS and Linux. Automatically detects common dotfiles during setup. Default backup directory syncs via iCloud on macOS.
 
 ## Installation
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
-source ~/.bashrc  # or source ~/.zshrc for zsh users
+source ~/.bashrc  # or source ~/.zshrc
 ```
-
-The installer will:
-
-- Download the latest version
-- Add juvy to your shell rc file (`.bashrc`, `.bash_profile`, or `.zshrc`)
 
 ## Quick Start
 
@@ -26,195 +21,109 @@ juvy list    # See what's being tracked
 
 ## Commands
 
-### Setup and Configuration
+### Setup
 
-- **`juvy init`** - Initialize juvy configuration with smart dotfile detection. Re-running allows changing settings with current values as defaults.
-- **`juvy add [files...]`** - Add files/directories to backup list. Without arguments, opens backup file in `$EDITOR`.
-  - Files: `juvy add ~/.zshrc` or `juvy add /etc/hosts`
-  - Directories: `juvy add ~/.config/nvim/` (trailing slash optional)
-  - Multiple files: `juvy add ~/.zshrc ~/.gitconfig`
-- **`juvy remove [files...]`** - Remove files/directories from backup list. Without arguments, opens backup file in `$EDITOR`.
-- **`juvy doctor [--fix]`** - Validate juvy configuration and setup (use `--fix` for common repairs)
+- `juvy init` - Initialize configuration with smart dotfile detection
+- `juvy add [files...]` - Add files/directories to backup list
+- `juvy remove [files...]` - Remove files/directories from backup list
+- `juvy doctor [--fix]` - Validate configuration
 
-### Backup Operations
+### Backup & Restore
 
-- **`juvy backup`** - Backup all tracked files with git versioning
-- **`juvy restore [--dry-run]`** - Restore all files from latest backup (creates safety backup first)
-- **`juvy list`** - Show all tracked files and directories
-- **`juvy status [file]`** - Show changes since last backup
-  - Without arguments: Shows summary of all changes
-  - With file argument: Shows detailed diff for specific file
+- `juvy backup` - Backup all tracked files with git versioning
+- `juvy restore [--dry-run]` - Restore files from latest backup
+- `juvy list` - Show tracked files
+- `juvy status [file]` - Show changes since last backup
 
 ### Git Integration
 
-- **`juvy git <args>`** - Run git commands in backup directory
+```bash
+juvy git log --oneline      # View backup history
+juvy git show HEAD          # Latest backup details
+juvy git diff HEAD~1 HEAD   # Compare last two backups
+```
 
-  ```bash
-  # View backup history
-  juvy git log --oneline
-  juvy git log --graph --oneline --all
+### Remote Sync
 
-  # See details of a specific backup
-  juvy git show HEAD
-  juvy git show <commit-hash>
-
-  # Check current git status
-  juvy git status
-
-  # View differences between commits
-  juvy git diff HEAD~1 HEAD
-
-  # Create a branch for testing
-  juvy git checkout -b experiment
-  juvy git checkout main
-
-  # Reset to a previous state (careful!)
-  juvy git reset --hard <commit-hash>
-  ```
-
-### Remote Synchronization
-
-- **`juvy remote <url>`** - Set remote URL and enable auto-sync
-- **`juvy remote`** - Show current remote status
-- **`juvy remote off`** - Disable remote synchronization
-- **`juvy remote push`** - Manually push to remote
+- `juvy remote <url>` - Set remote URL and enable auto-sync
+- `juvy remote` - Show current remote status
+- `juvy remote off` - Disable remote
+- `juvy remote push` - Manual push
 
 ### Maintenance
 
-- **`juvy update`** - Update juvy to the latest version
-- **`juvy version`** - Show version information
-- **`juvy uninstall`** - Uninstall juvy (preserves backups)
-- **`juvy nuke`** - Uninstall juvy and remove all backups and configuration
+- `juvy update` - Update to latest version
+- `juvy version` - Show version
+- `juvy uninstall` - Uninstall (preserves backups)
+- `juvy nuke` - Uninstall and delete all data
 
 ## Configuration
 
-### Configuration Files
+### Files
 
-- **`~/.config/juvy/config`** - Main configuration file with key-value pairs:
-  - `JUVY_BACKUP_DIR` - Directory where backups are stored
-  - `JUVY_REMOTE_URL` - Git remote URL for synchronization (optional)
-  - `JUVY_REMOTE_PUSH` - Auto-push after backup (`true`/`false`)
-  - `JUVY_REMOTE_NAME` - Git remote name (usually `origin`)
+| File | Purpose |
+|------|---------|
+| `~/.config/juvy/config` | Settings (backup dir, remote URL) |
+| `~/.config/juvy/backup` | List of files/directories to backup |
+| `~/.config/juvy/log` | Operation history |
 
-- **`~/.config/juvy/backup`** - List of files/directories to backup with support for:
-  - Include patterns: `~/.zshrc`, `~/.config/nvim/`
-  - Exclude patterns: `!~/.config/nvim/undo/`
-  - Inline comments: `~/.zshrc # Main shell config`
-  - Excludes take precedence over includes and apply within directories
+### Backup File Format
 
-- **`~/.config/juvy/log`** - Error logging and operation history
+```bash
+~/.zshrc                    # Single file
+~/.config/nvim/             # Directory (trailing slash)
+!~/.config/nvim/undo/       # Exclude pattern
+~/.gitconfig                # Inline comment
+```
 
-### Cross-Platform Default Backup Directory
+Excludes take precedence over includes.
 
-- **macOS with iCloud**: `~/Library/Mobile Documents/com~apple~CloudDocs/juvy`
-- **macOS without iCloud**: `~/.local/share/juvy`
-- **Linux**: `${XDG_DATA_HOME:-~/.local/share}/juvy`
+### Default Backup Directory
 
-## Backup Structure
+Backups are stored per-hostname for multi-machine setups:
+
+| Platform | Path |
+|----------|------|
+| macOS (iCloud) | `~/Library/Mobile Documents/com~apple~CloudDocs/juvy/<hostname>` |
+| macOS (local) | `~/.local/share/juvy/<hostname>` |
+| Linux | `~/.local/share/juvy/<hostname>` |
+
+### Backup Structure
 
 ```
 backup_directory/
-├── .git/                   # Git versioning metadata
-├── Users/                  # User home directory files
-│   └── username/
-│       ├── .zshrc
-│       ├── .gitconfig
-│       └── .config/
-│           └── nvim/
-└── etc/                    # System files (if any)
-    └── hosts
+├── .git/
+└── Users/
+    └── username/
+        ├── .zshrc
+        ├── .gitconfig
+        └── .config/
+            └── nvim/
 ```
 
-## Usage Examples
-
-### Basic Workflow
-
-```bash
-# Initialize with auto-detection
-juvy init
-
-# Add specific files
-juvy add ~/.vimrc ~/.tmux.conf
-
-# Add a directory
-juvy add ~/.config/alacritty/
-
-# Create backup
-juvy backup
-
-# Check what's tracked
-juvy list
-
-# See changes since last backup
-juvy status
-
-# View detailed changes for specific file
-juvy status ~/.zshrc
-```
-
-### Advanced Usage
-
-```bash
-# Add SSH config (with security prompt)
-juvy add ~/.ssh/config
-
-# View backup history and details
-juvy git log --oneline          # Compact history
-juvy git log --graph --oneline   # Visual branch history
-juvy git show HEAD              # Latest backup details
-juvy git diff HEAD~1 HEAD       # Compare last two backups
-
-# Restore from backup (creates safety backup first)
-juvy restore
-
-# Validate configuration
-juvy doctor
-
-# Apply common repairs
-juvy doctor --fix
-```
-
-### Remote Git Synchronization
-
-```bash
-# Add a git remote for cloud sync
-juvy remote git@github.com:username/dotfiles.git
-
-# Check remote status
-juvy remote
-
-# Manual push operations
-juvy remote push
-
-# Disable remote synchronization
-juvy remote off
-
-# Use git commands directly for advanced operations
-juvy git remote -v                # View configured remotes
-juvy git pull origin main         # Manual pull
-juvy git push origin main         # Manual push
-```
-
-## Testing
-
-Integration tests live in `tests/integration/`. Run all tests:
-
-```bash
-bash tests/run-tests.sh
-```
-
-Run a single test:
-
-```bash
-bash tests/integration/test-single-backup.sh
-```
-
-Each test creates an isolated environment using temporary directories and requires `bash`, `git`, and `rsync`.
+Files are stored using their absolute filesystem paths.
 
 ## Development
 
-Source modules live in `src/`. Bundle them into `juvy.sh` with:
+### Building
 
 ```bash
-./scripts/build.sh
+./scripts/build.sh  # Bundle src/ modules into juvy.sh
 ```
+
+### Testing
+
+Tests use [bats](https://github.com/bats-core/bats-core) and run in Docker:
+
+```bash
+# Run all tests
+docker compose run --rm test
+
+# Run specific test file
+docker compose run --rm test bats tests/bats/backup.bats
+
+# Interactive shell for debugging
+docker compose run --rm shell
+```
+
+Tests also run on macOS (Bash 3.2) and Ubuntu in CI.

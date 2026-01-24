@@ -1,9 +1,7 @@
 services:
   # Standard Ubuntu tests with system bash
   test:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    build: .
     volumes:
       - .:/workspace
     working_dir: /workspace
@@ -11,9 +9,7 @@ services:
 
   # Interactive shell for debugging
   shell:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    build: .
     volumes:
       - .:/workspace
     working_dir: /workspace
