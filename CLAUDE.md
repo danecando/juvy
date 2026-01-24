@@ -75,7 +75,7 @@ zsh tests/integration/test-single-backup.zsh
 ```bash
 # Test core workflow:
 juvy init      # Initialize with auto-detection
-juvy validate  # Validate backup configuration
+juvy doctor    # Validate juvy configuration and backup file
 juvy backup    # Create backup
 juvy list      # Verify tracked files
 juvy status    # Check for changes

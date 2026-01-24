@@ -705,7 +705,7 @@ _juvy_add() {
     local editor="${EDITOR:-nano}"
     if (( $+commands[$editor] )); then
       "$editor" "${_JUVY_CONFIG[backup_file]}"
-      print "💡 Consider running 'juvy validate' to check your backup file"
+      print "💡 Consider running 'juvy doctor' to check your backup file"
     else
       print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
       return 1
@@ -833,7 +833,7 @@ _juvy_remove() {
     local editor="${EDITOR:-nano}"
     if (( $+commands[$editor] )); then
       "$editor" "${_JUVY_CONFIG[backup_file]}"
-      print "💡 Consider running 'juvy validate' to check your backup file"
+      print "💡 Consider running 'juvy doctor' to check your backup file"
     else
       print "❌ Editor '$editor' not found. Set EDITOR environment variable or install nano." >&2
       return 1

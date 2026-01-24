@@ -24,8 +24,8 @@ juvy() {
     (backup)
       _juvy_backup "$@"
       ;;
-    (validate)
-      _juvy_validate "$@"
+    (doctor)
+      _juvy_doctor "$@"
       ;;
     (version|--version|-v)
       print "juvy ${_JUVY_CONFIG[version]}"
@@ -83,7 +83,8 @@ _juvy_help() {
   print "  list        Show all tracked files and directories"
   print "  status      Show changes since last backup"
   print "              'status [file]' shows detailed diff for specific file"
-  print "  validate    Validate backup file without running backup"
+  print "  doctor      Validate juvy configuration and setup"
+  print "              'doctor --fix' applies common repairs"
   print "  git         Run git commands in backup directory"
   print "  remote      Manage git remote for backup synchronization"
   print "              'remote' shows current status"
@@ -504,15 +505,37 @@ _juvy_validate_config_file() {
       (JUVY_BACKUP_DIR)
         backup_dir_set=true
         # Validate backup directory path
-        local test_path
+        local test_path parent_dir
         if ! test_path="$(_juvy_parse_quoted_value "$value")"; then
           issues+=("Line $line_num: Invalid value format: $value")
           continue
         fi
-        
-        # Check if backup directory is accessible
-        if [[ -n "$test_path" ]] && ! mkdir -p "$test_path" 2>/dev/null; then
-          issues+=("Line $line_num: Cannot create backup directory: $test_path")
+
+        if [[ -z "$test_path" ]]; then
+          issues+=("Line $line_num: Empty backup directory path")
+          continue
+        fi
+
+        if [[ -e "$test_path" && ! -d "$test_path" ]]; then
+          issues+=("Line $line_num: Backup path is not a directory: $test_path")
+          continue
+        fi
+
+        if [[ -d "$test_path" && ! -w "$test_path" ]]; then
+          issues+=("Line $line_num: Backup directory is not writable: $test_path")
+          continue
+        fi
+
+        if [[ ! -e "$test_path" ]]; then
+          parent_dir="${test_path:h}"
+          if [[ -z "$parent_dir" || "$parent_dir" == "$test_path" ]]; then
+            parent_dir="$(dirname "$test_path")"
+          fi
+          if [[ ! -d "$parent_dir" || ! -w "$parent_dir" ]]; then
+            issues+=("Line $line_num: Backup directory cannot be created (check permissions): $test_path")
+          else
+            issues+=("Line $line_num: Backup directory does not exist: $test_path")
+          fi
         fi
         ;;
       (JUVY_REMOTE_URL)
@@ -615,6 +638,9 @@ _juvy_validate_backup_file() {
   done < "${_JUVY_CONFIG[backup_file]}"
   
   # Report validation results
+  local has_issues=false
+  local has_warnings=false
+
   if (( ${#exclude_patterns[@]} > 0 )); then
     print "ℹ️  Exclude patterns found:"
     for exclude in "${exclude_patterns[@]}"; do
@@ -630,6 +656,7 @@ _juvy_validate_backup_file() {
     done
     print "   These paths will be skipped during backup" >&2
     print ""
+    has_issues=true
   fi
   
   if (( ${#large_paths[@]} > 0 )); then
@@ -639,7 +666,12 @@ _juvy_validate_backup_file() {
     done
     print "   These may slow down backup and consume significant storage" >&2
     print ""
+    has_warnings=true
   fi
   
+  if [[ "$has_issues" == "true" ]]; then
+    return 1
+  fi
+
   return 0
 }
