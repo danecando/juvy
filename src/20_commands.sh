@@ -522,7 +522,7 @@ _juvy_validate_config_file() {
 
   # Test if config can be parsed without errors
   while IFS= read -r line; do
-    (( line_num++ ))
+    (( ++line_num ))
 
     [[ -z "$line" || "$line" == \#* ]] && continue
 
@@ -654,7 +654,7 @@ _juvy_validate_backup_file() {
   echo "Validating backup file..."
 
   while IFS= read -r entry; do
-    (( line_num++ ))
+    (( ++line_num ))
 
     entry="$(_juvy_parse_entry_basic "$entry")" || continue
 

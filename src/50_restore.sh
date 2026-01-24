@@ -97,12 +97,12 @@ _juvy_show_restore_preview() {
         dir_file_count=$(find "$backup_path" -type f 2>/dev/null | wc -l)
         dir_file_count="${dir_file_count#"${dir_file_count%%[![:space:]]*}"}"
         (( total_files += dir_file_count ))
-        (( dir_count++ ))
+        (( ++dir_count ))
       fi
     else
       if [[ -f "$backup_path" ]]; then
-        (( total_files++ ))
-        (( file_count++ ))
+        (( ++total_files ))
+        (( ++file_count ))
       fi
     fi
   done < "$_JUVY_BACKUP_FILE"
@@ -284,7 +284,7 @@ _juvy_list() {
           file_count="$(_juvy_parse_dir_info "$dir_info" count)"
           display_size="$(_juvy_parse_dir_info "$dir_info" human)"
           total_size=$((total_size + $(_juvy_parse_dir_info "$dir_info" bytes)))
-          (( total_dirs++ ))
+          (( ++total_dirs ))
         else
           file_count="?"
           display_size="?"
@@ -310,7 +310,7 @@ _juvy_list() {
         [[ -z "$file_date" ]] && file_date="Unknown"
 
         total_size=$((total_size + $(_juvy_get_file_size "$source_path")))
-        (( total_files++ ))
+        (( ++total_files ))
 
         printf "  [F] %-30s %8s  %s\n" "$entry" "$file_size" "$file_date"
       else
@@ -408,17 +408,17 @@ _juvy_status() {
           # Check if rsync would make any changes (look for actual change indicators)
           if echo "$rsync_output" | grep -q '^[>*<]'; then
             changed_files+=("$entry")
-            (( live_changes++ ))
+            (( ++live_changes ))
           fi
         fi
       elif [[ -d "$source_path" && ! -d "$backup_path" ]]; then
         # Directory exists but not backed up
         new_files+=("$entry")
-        (( live_changes++ ))
+        (( ++live_changes ))
       elif [[ ! -d "$source_path" && -d "$backup_path" ]]; then
         # Directory was deleted
         deleted_files+=("$entry")
-        (( live_changes++ ))
+        (( ++live_changes ))
       fi
     else
       # File entry
@@ -431,23 +431,23 @@ _juvy_status() {
           # Times differ, check if content actually changed
           if ! diff -q "$source_path" "$backup_path" >/dev/null 2>&1; then
             changed_files+=("$entry")
-            (( live_changes++ ))
+            (( ++live_changes ))
           fi
         elif [[ -z "$source_mtime" || -z "$backup_mtime" ]]; then
           # Fallback to content comparison if stat fails
           if ! diff -q "$source_path" "$backup_path" >/dev/null 2>&1; then
             changed_files+=("$entry")
-            (( live_changes++ ))
+            (( ++live_changes ))
           fi
         fi
       elif [[ -f "$source_path" && ! -f "$backup_path" ]]; then
         # File exists but not backed up
         new_files+=("$entry")
-        (( live_changes++ ))
+        (( ++live_changes ))
       elif [[ ! -f "$source_path" && -f "$backup_path" ]]; then
         # File was deleted
         deleted_files+=("$entry")
-        (( live_changes++ ))
+        (( ++live_changes ))
       fi
     fi
   done < "$_JUVY_BACKUP_FILE"
