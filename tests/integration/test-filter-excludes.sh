@@ -14,9 +14,13 @@ echo "DEBUG: PWD=$PWD" >&2
 source "$(dirname "$0")/../test-framework.sh"
 echo "DEBUG: Sourced test-framework.sh" >&2
 
+echo "DEBUG: About to mktemp" >&2
 TEST_ROOT=$(mktemp -d)
+echo "DEBUG: TEST_ROOT=$TEST_ROOT" >&2
 export HOME="$TEST_ROOT/home"
+echo "DEBUG: HOME=$HOME" >&2
 mkdir -p "$HOME"
+echo "DEBUG: Created HOME dir" >&2
 
 # Create test directory structure:
 # ~/.config/nvim/
@@ -42,9 +46,12 @@ mkdir -p "$JUVY_CONFIG_DIR"
 
 BACKUP_DIR="$TEST_ROOT/backup"
 mkdir -p "$BACKUP_DIR"
+echo "DEBUG: About to git init in $BACKUP_DIR" >&2
 git init -b main "$BACKUP_DIR" >/dev/null 2>&1
+echo "DEBUG: git init done" >&2
 git -C "$BACKUP_DIR" config user.name "Test User"
 git -C "$BACKUP_DIR" config user.email "test@example.com"
+echo "DEBUG: git config done" >&2
 
 echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
 
@@ -56,10 +63,14 @@ cat > "$JUVY_CONFIG_DIR/backup" << 'EOF'
 EOF
 
 # Source juvy
+echo "DEBUG: About to source juvy.sh" >&2
 source "$(dirname "$0")/../../juvy.sh"
+echo "DEBUG: Sourced juvy.sh" >&2
 
 # Run backup
+echo "DEBUG: About to run juvy backup" >&2
 juvy backup >/dev/null
+echo "DEBUG: juvy backup completed" >&2
 
 # Verify expected files ARE backed up
 BACKUP_ZSHRC="$BACKUP_DIR$HOME/.zshrc"
