@@ -476,7 +476,7 @@ _juvy_update() {
     return 1
   fi
 
-  latest_version=$(grep "^_JUVY_VERSION=" "$temp_script" | cut -d'"' -f2)
+  latest_version=$(grep '_JUVY_VERSION="[0-9]' "$temp_script" | head -1 | cut -d'"' -f2)
 
   if [[ -z "$latest_version" ]]; then
     echo "Failed to extract version from downloaded script" >&2
