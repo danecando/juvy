@@ -8,7 +8,9 @@ Track your dotfiles and config without the hassle.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
+```
 
+```bash
 juvy init
 ```
 
@@ -82,7 +84,7 @@ Settings in `~/.config/juvy/config`:
 Example config:
 
 ```bash
-JUVY_BACKUP_DIR='/Users/{username}/Library/Mobile Documents/com~apple~CloudDocs/juvy/{hostname}'
+JUVY_BACKUP_DIR='/Users/<username>/Library/Mobile Documents/com~apple~CloudDocs/juvy/<hostname>'
 JUVY_REMOTE_URL='git@github.com:username/dotfiles.git'
 JUVY_REMOTE_PUSH='true'
 JUVY_REMOTE_NAME='origin'
