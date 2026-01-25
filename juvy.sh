@@ -521,11 +521,16 @@ _juvy_prompt_remote_setup() {
   echo ""
   echo "Testing connection to remote..."
 
-  # Add remote temporarily to test connection
+  # Add remote to test connection
   local remote_name="origin"
   local test_success=false
 
-  if _juvy_git remote add "$remote_name" "$remote_url" 2>/dev/null; then
+  # Remove existing remote if it exists
+  if _juvy_git remote get-url "$remote_name" >/dev/null 2>&1; then
+    _juvy_git remote remove "$remote_name" 2>/dev/null
+  fi
+
+  if _juvy_git remote add "$remote_name" "$remote_url"; then
     if _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
       echo "Remote connection successful"
       test_success=true
