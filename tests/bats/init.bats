@@ -45,7 +45,8 @@ teardown() {
   mkdir -p "$JUVY_CONFIG_DIR"
   echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
 
-  # Create test dotfiles
+  # Create test dotfiles (.zshrc needed for fallback defaults when no input provided)
+  echo "zshrc content" > "$HOME/.zshrc"
   echo "bashrc content" > "$HOME/.bashrc"
   mkdir -p "$HOME/.config/nvim"
   echo "nvim config" > "$HOME/.config/nvim/init.lua"
