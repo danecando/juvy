@@ -2780,9 +2780,33 @@ _juvy_status() {
     fi
   done < "$_JUVY_BACKUP_FILE"
 
+  # Check remote sync status if configured
+  local remote_status=""
+  if [[ -n "$_JUVY_REMOTE_URL" ]]; then
+    local remote_name="${_JUVY_REMOTE_NAME:-origin}"
+    local unpushed_count=0
+
+    if _juvy_git rev-parse "$remote_name/main" >/dev/null 2>&1; then
+      unpushed_count="$(_juvy_git rev-list --count "$remote_name/main..HEAD" 2>/dev/null || echo 0)"
+    else
+      unpushed_count="$(_juvy_git rev-list --count HEAD 2>/dev/null || echo 0)"
+    fi
+
+    if [[ "$unpushed_count" -gt 0 ]]; then
+      if [[ "$unpushed_count" -eq 1 ]]; then
+        remote_status="1 commit not pushed to remote"
+      else
+        remote_status="$unpushed_count commits not pushed to remote"
+      fi
+    fi
+  fi
+
   # Display results
   if [[ -z "$backup_changes" && $live_changes -eq 0 ]]; then
     echo "No changes since last backup"
+    if [[ -n "$remote_status" ]]; then
+      echo "$remote_status"
+    fi
     return 0
   fi
 
@@ -2852,15 +2876,8 @@ _juvy_status() {
   echo "Run 'juvy backup' to save changes"
   echo "Run 'juvy status [file]' for detailed changes"
 
-  # Show remote status if configured
-  if [[ -n "$_JUVY_REMOTE_URL" ]]; then
-    echo ""
-    echo "Remote: $_JUVY_REMOTE_URL"
-    if [[ "$_JUVY_REMOTE_PUSH" == "true" ]]; then
-      echo "   Auto-push: enabled"
-    else
-      echo "   Auto-push: disabled"
-    fi
+  if [[ -n "$remote_status" ]]; then
+    echo "$remote_status"
   fi
 }
 
