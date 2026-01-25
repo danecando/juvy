@@ -56,7 +56,7 @@ fi
 if [[ -d "$JUVY_DIR" ]]; then
   print_info "Existing juvy installation found at $JUVY_DIR"
   echo -n "Do you want to update it? [y/N] "
-  read -r update
+  read -r update </dev/tty
   if [[ "$update" != "y" ]]; then
     print_info "Installation cancelled"
     exit 0

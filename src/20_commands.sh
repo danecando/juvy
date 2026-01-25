@@ -347,8 +347,8 @@ _juvy_init_smart_defaults() {
     "~/.tmux.conf" "~/.alacritty.yml" "~/.alacritty.toml"
     "~/.config/kitty/" "~/.config/wezterm/" "~/.config/starship.toml" "~/.config/zellij/"
     # Development tools
-    "~/.npmrc" "~/.tool-versions" "~/.config/mise/" "~/.mise.toml"
-    "~/.cargo/config.toml" "~/.gemrc" "~/.yarnrc" "~/.yarnrc.yml" "~/.config/pip/"
+    "~/.tool-versions" "~/.config/mise/" "~/.mise.toml"
+    "~/.cargo/config.toml" "~/.gemrc" "~/.config/pip/"
     # CLI utilities
     "~/.config/lazygit/" "~/.config/bat/" "~/.config/htop/" "~/.hushlogin"
     # macOS
