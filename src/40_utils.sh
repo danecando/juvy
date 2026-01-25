@@ -260,11 +260,11 @@ _juvy_process_backup_entries() {
   local entry source_path
   local home_count=0 system_count=0
 
-  echo "Processing backup entries..."
+  _juvy_info "Processing backup entries..."
 
   _juvy_collect_backup_entries
 
-  echo "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
+  _juvy_info "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
 
   for entry in ${_JUVY_INCLUDE_PATHS[@]+"${_JUVY_INCLUDE_PATHS[@]}"}; do
     source_path="$(_juvy_entry_to_source_path "$entry")"
@@ -287,25 +287,25 @@ _juvy_process_backup_entries() {
   done
 
   if [[ ${#home_paths[@]} -gt 0 ]]; then
-    echo "Backing up ${#home_paths[@]} home paths..."
+    _juvy_info "Backing up ${#home_paths[@]} home paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      echo "Failed to build filter file for home paths" >&2
+      _juvy_error "Failed to build filter file for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR$HOME/" > /dev/null 2>&1; then
-      echo "Failed to create backup directory for home paths" >&2
+      _juvy_error "Failed to create backup directory for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "$HOME/" "$_JUVY_BACKUP_DIR$HOME/" "$temp_filter_file"; then
-      echo "Failed to backup home paths" >&2
+      _juvy_error "Failed to backup home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -315,25 +315,25 @@ _juvy_process_backup_entries() {
   fi
 
   if [[ ${#system_paths[@]} -gt 0 ]]; then
-    echo "Backing up ${#system_paths[@]} system paths..."
+    _juvy_info "Backing up ${#system_paths[@]} system paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      echo "Failed to build filter file for system paths" >&2
+      _juvy_error "Failed to build filter file for system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR" > /dev/null 2>&1; then
-      echo "Failed to create backup directory" >&2
+      _juvy_error "Failed to create backup directory"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "/" "$_JUVY_BACKUP_DIR" "$temp_filter_file"; then
-      echo "Failed to backup system paths" >&2
+      _juvy_error "Failed to backup system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -342,7 +342,7 @@ _juvy_process_backup_entries() {
     system_count=${#system_paths[@]}
   fi
 
-  echo "Processed $home_count home and $system_count system paths"
+  _juvy_info "Processed $home_count home and $system_count system paths"
   return 0
 }
 
@@ -416,6 +416,32 @@ _juvy_log() {
 
 _juvy_log_error() {
   _juvy_log "ERROR: $1"
+}
+
+
+# User-facing output utilities
+# These respect JUVY_VERBOSE for progress messages
+
+_juvy_info() {
+  # Progress/status messages - only shown when verbose
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
+    echo "$@"
+  fi
+}
+
+_juvy_result() {
+  # Final results - always shown
+  echo "$@"
+}
+
+_juvy_error() {
+  # Errors - always shown to stderr
+  echo "$@" >&2
+}
+
+_juvy_warn() {
+  # Warnings - always shown to stderr
+  echo "Warning: $@" >&2
 }
 
 

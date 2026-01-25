@@ -56,21 +56,21 @@ _juvy_restore() {
   fi
 
   echo ""
-  echo "Creating safety backup..."
+  _juvy_info "Creating safety backup..."
   local safety_backup_path
   if ! safety_backup_path="$(_juvy_create_safety_backup)"; then
-    echo "Failed to create safety backup" >&2
+    _juvy_error "Failed to create safety backup"
     return 1
   fi
 
-  echo "Restoring files..."
+  _juvy_info "Restoring files..."
   if ! _juvy_perform_restore "$dry_run"; then
-    echo "Restore failed" >&2
+    _juvy_error "Restore failed"
     return 1
   fi
 
-  echo "Setting permissions..."
-  echo "Restore complete!"
+  _juvy_info "Setting permissions..."
+  _juvy_result "Restore complete!"
   echo ""
   echo "To undo: juvy restore \"$safety_backup_path\""
 }
@@ -147,7 +147,7 @@ _juvy_create_safety_backup() {
   safety_dir="$_JUVY_CONFIG_DIR/safety-backup/$timestamp"
 
   if ! mkdir -p "$safety_dir" > /dev/null 2>&1; then
-    echo "Failed to create safety backup directory: $safety_dir" >&2
+    _juvy_error "Failed to create safety backup directory: $safety_dir"
     return 1
   fi
 
@@ -161,21 +161,21 @@ _juvy_create_safety_backup() {
       dest_dir="$(dirname "$dest_path")"
 
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
-        echo "Failed to create safety backup directory: $dest_dir" >&2
+        _juvy_error "Failed to create safety backup directory: $dest_dir"
         return 1
       fi
 
       if [[ "$entry" == */ ]]; then
         if [[ -d "$source_path" ]]; then
           if ! rsync -a "$source_path" "$dest_dir/" > /dev/null 2>&1; then
-            echo "Failed to backup directory: $source_path" >&2
+            _juvy_error "Failed to backup directory: $source_path"
             return 1
           fi
         fi
       else
         if [[ -f "$source_path" ]]; then
           if ! rsync -a "$source_path" "$dest_path" > /dev/null 2>&1; then
-            echo "Failed to backup file: $source_path" >&2
+            _juvy_error "Failed to backup file: $source_path"
             return 1
           fi
         fi
@@ -195,9 +195,9 @@ _juvy_perform_restore() {
   local source_path entry
 
   if [[ "$dry_run" == "true" ]]; then
-    echo "Showing what would be restored from backup..."
+    _juvy_info "Showing what would be restored from backup..."
   else
-    echo "Restoring files from backup..."
+    _juvy_info "Restoring files from backup..."
   fi
 
   _juvy_collect_backup_entries
@@ -216,13 +216,13 @@ _juvy_perform_restore() {
     home_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$home_filter_file"; then
-      echo "Failed to build restore filter for home paths" >&2
+      _juvy_error "Failed to build restore filter for home paths"
       rm -f "$home_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_restore_with_filters "$backup_dir$HOME" "$HOME" "$home_filter_file" "$dry_run"; then
-      echo "Failed to restore home files" >&2
+      _juvy_error "Failed to restore home files"
       rm -f "$home_filter_file"
       return 1
     fi
@@ -237,13 +237,13 @@ _juvy_perform_restore() {
     extra_excludes=("/.git/")
 
     if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$system_filter_file" extra_excludes; then
-      echo "Failed to build restore filter for system paths" >&2
+      _juvy_error "Failed to build restore filter for system paths"
       rm -f "$system_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_restore_with_filters "$backup_dir" "/" "$system_filter_file" "$dry_run"; then
-      echo "Failed to restore system files" >&2
+      _juvy_error "Failed to restore system files"
       rm -f "$system_filter_file"
       return 1
     fi
@@ -252,7 +252,7 @@ _juvy_perform_restore() {
   fi
 
   if [[ "$dry_run" != "true" ]]; then
-    echo "Files restored successfully"
+    _juvy_result "Files restored successfully"
   fi
   return 0
 }

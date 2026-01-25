@@ -6,49 +6,49 @@ _juvy_backup() {
   _juvy_validate_backup_dir_configured || return 1
   _juvy_validate_backup_file_exists || return 1
 
-  echo "Starting backup process..."
+  _juvy_info "Starting backup process..."
 
   # Validate backup file before starting rsync
   _juvy_validate_backup_file
 
   # Process backup entries with support for directories and files
   if ! _juvy_process_backup_entries; then
-    echo "Backup failed" >&2
+    _juvy_error "Backup failed"
     _juvy_log "BACKUP FAILED: rsync error"
     return 1
   fi
 
-  echo "Files synced successfully"
+  _juvy_info "Files synced successfully"
 
 
   if [[ -n $(_juvy_git status --porcelain) ]]; then
     _juvy_git add -A
     if ! _juvy_git commit -m "Backup: $(_juvy_timestamp)"; then
-      echo "Git commit failed, but files were synced" >&2
+      _juvy_error "Git commit failed, but files were synced"
       _juvy_log "BACKUP FAILED: git commit error"
       return 1
     fi
-    echo "Changes committed to git"
+    _juvy_info "Changes committed to git"
 
     # Auto-push if remote is configured and enabled
     local push_status=""
     if [[ "$_JUVY_REMOTE_PUSH" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
       if _juvy_remote_push_auto; then
-        echo "Changes pushed to remote"
+        _juvy_info "Changes pushed to remote"
         push_status=" (pushed to remote)"
       else
-        echo "Failed to push to remote (run 'juvy remote push' manually)" >&2
+        _juvy_error "Failed to push to remote (run 'juvy remote push' manually)"
         push_status=" (push failed)"
       fi
     fi
 
     _juvy_log "BACKUP OK: changes committed${push_status}"
   else
-    echo "No changes to commit"
+    _juvy_info "No changes to commit"
     _juvy_log "BACKUP OK: no changes"
   fi
 
-  echo "Backup completed successfully"
+  _juvy_result "Backup completed successfully"
 }
 
 _juvy_doctor() {
