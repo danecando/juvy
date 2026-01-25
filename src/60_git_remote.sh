@@ -36,7 +36,7 @@ _juvy_remote_set() {
 
   _juvy_validate_backup_dir_exists || return 1
 
-  echo "Setting up git remote..."
+  _juvy_info "Setting up git remote..."
 
   # Remove existing remote if it exists
   if _juvy_git remote get-url "$remote_name" >/dev/null 2>&1; then
@@ -45,12 +45,12 @@ _juvy_remote_set() {
 
   # Add remote to git repository
   if ! _juvy_git remote add "$remote_name" "$url"; then
-    echo "Failed to add remote" >&2
+    _juvy_error "Failed to add remote"
     return 1
   fi
 
   # Test connection
-  echo "Testing connection to remote..."
+  _juvy_info "Testing connection to remote..."
   if ! _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
     echo "Warning: Could not connect to remote (check URL and authentication)" >&2
     echo "   You can still proceed, but push/pull operations may fail" >&2

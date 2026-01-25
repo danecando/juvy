@@ -6,6 +6,12 @@ juvy() {
   _juvy_init_paths
   _juvy_load_config
 
+  # Check for verbose flag before command
+  if [[ "${1:-}" == "-v" ]]; then
+    export JUVY_VERBOSE=1
+    shift
+  fi
+
   case $1 in
     init)
       _juvy_init "$@"
@@ -69,7 +75,10 @@ juvy() {
 _juvy_help() {
   echo "juvy $_JUVY_VERSION - dotfile backup utility"
   echo ""
-  echo "Usage: juvy <command>"
+  echo "Usage: juvy [-v] <command>"
+  echo ""
+  echo "Options:"
+  echo "  -v            Enable verbose output (show progress messages)"
   echo ""
   echo "Commands:"
   echo "  init        Initialize juvy configuration"
@@ -298,69 +307,64 @@ _juvy_array_contains() {
   return 1
 }
 
+_juvy_add_fallback_defaults() {
+  local added=false
+  if [[ -f "$HOME/.zshrc" ]]; then
+    echo "~/.zshrc" >> "$_JUVY_BACKUP_FILE"
+    added=true
+  fi
+  if [[ -f "$HOME/.gitconfig" ]]; then
+    echo "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
+    added=true
+  fi
+  if [[ "$added" == "false" ]]; then
+    echo "No default files found to add"
+  fi
+}
+
 _juvy_init_smart_defaults() {
   local found_files=()
-  local recommended_files=()
-  local sensitive_files=()
-  local all_patterns=()
-  local recommended_patterns=()
-  local sensitive_patterns=()
+  local patterns=()
   local choice
 
-  # Define dotfile patterns to search for
-  all_patterns=(
+  # Define dotfile patterns to search for (excludes sensitive files like SSH, gh CLI, AWS)
+  patterns=(
     # Shell configs
     "~/.zshrc" "~/.bashrc" "~/.profile" "~/.bash_profile"
+    "~/.zshenv" "~/.zprofile" "~/.inputrc"
     # Git
     "~/.gitconfig" "~/.gitignore_global" "~/.gitignore"
-    # SSH (sensitive)
-    "~/.ssh/config" "~/.ssh/known_hosts"
     # Editors
     "~/.vimrc" "~/.config/nvim/"
     "~/.emacs" "~/.emacs.d/"
+    "~/.config/helix/" "~/.ideavimrc"
     # Terminal
     "~/.tmux.conf" "~/.alacritty.yml" "~/.alacritty.toml"
-    # Tools
-    "~/.config/gh/" "~/.aws/config" "~/.npmrc"
+    "~/.config/kitty/" "~/.config/wezterm/" "~/.config/starship.toml" "~/.config/zellij/"
+    # Development tools
+    "~/.npmrc" "~/.tool-versions" "~/.config/mise/" "~/.mise.toml"
+    "~/.cargo/config.toml" "~/.gemrc" "~/.yarnrc" "~/.yarnrc.yml" "~/.config/pip/"
+    # CLI utilities
+    "~/.config/lazygit/" "~/.config/bat/" "~/.config/htop/" "~/.hushlogin"
+    # macOS
+    "~/.config/karabiner/"
   )
 
-  recommended_patterns=(
-    "~/.zshrc" "~/.bashrc" "~/.profile" "~/.bash_profile"
-    "~/.gitconfig" "~/.gitignore_global" "~/.gitignore"
-    "~/.vimrc" "~/.config/nvim/"
-    "~/.emacs" "~/.emacs.d/"
-    "~/.tmux.conf" "~/.alacritty.yml" "~/.alacritty.toml"
-    "~/.npmrc"
-  )
-
-  sensitive_patterns=(
-    "~/.ssh/config" "~/.ssh/known_hosts"
-    "~/.config/gh/" "~/.aws/config"
-  )
-
-  echo "Scanning for common dotfiles..."
-  echo ""
+  _juvy_info "Scanning for common dotfiles..."
+  _juvy_info ""
 
   # Scan for existing files
   local pattern full_path
-  for pattern in "${all_patterns[@]}"; do
+  for pattern in "${patterns[@]}"; do
     full_path="${pattern/#\~/$HOME}"
     if [[ -e "$full_path" ]]; then
       found_files+=("$pattern")
-
-      if _juvy_array_contains "$pattern" "${recommended_patterns[@]}"; then
-        recommended_files+=("$pattern")
-      fi
-
-      if _juvy_array_contains "$pattern" "${sensitive_patterns[@]}"; then
-        sensitive_files+=("$pattern")
-      fi
     fi
   done
 
   if [[ ${#found_files[@]} -eq 0 ]]; then
     echo "No common dotfiles found. Creating basic backup list..."
-    printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
+    _juvy_add_fallback_defaults
     return 0
   fi
 
@@ -368,19 +372,8 @@ _juvy_init_smart_defaults() {
   echo "Found these files you might want to backup:"
   echo ""
 
-  local file file_status warning file_type
+  local file file_type
   for file in "${found_files[@]}"; do
-    file_status="o"
-    warning=""
-
-    if _juvy_array_contains "$file" "${recommended_files[@]}"; then
-      file_status="+"
-    fi
-
-    if _juvy_array_contains "$file" "${sensitive_files[@]}"; then
-      warning=" (contains sensitive data)"
-    fi
-
     full_path="${file/#\~/$HOME}"
     file_type="(config)"
 
@@ -392,23 +385,20 @@ _juvy_init_smart_defaults() {
       file_type="(git config)"
     elif [[ "$file" == *"vim"* || "$file" == *"emacs"* ]]; then
       file_type="(editor config)"
-    elif [[ "$file" == *"ssh"* ]]; then
-      file_type="(ssh config)"
     elif [[ "$file" == *"tmux"* || "$file" == *"alacritty"* ]]; then
       file_type="(terminal config)"
     fi
 
-    printf "  %s %s %s%s\n" "$file_status" "$file" "$file_type" "$warning"
+    printf "  %s %s\n" "$file" "$file_type"
   done
 
   echo ""
   echo "Select files to track:"
   echo "  a) All files"
-  echo "  r) Recommended only (non-sensitive)"
   echo "  c) Choose individually"
   echo "  s) Skip - I'll add manually"
   echo ""
-  echo -n "Choice [a/r/c/s]: "
+  echo -n "Choice [a/c/s]: "
   read -r choice
 
   case "$choice" in
@@ -416,21 +406,11 @@ _juvy_init_smart_defaults() {
       _juvy_add_files_to_backup "${found_files[@]}"
       echo "Added all found files to backup list"
       ;;
-    r|R)
-      if [[ ${#recommended_files[@]} -gt 0 ]]; then
-        _juvy_add_files_to_backup "${recommended_files[@]}"
-        echo "Added recommended files to backup list"
-      else
-        printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-        echo "Created basic backup list"
-      fi
-      ;;
     c|C)
       _juvy_interactive_file_selection "${found_files[@]}"
       ;;
     s|S|*)
-      printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-      echo "Created basic backup list"
+      _juvy_add_fallback_defaults
       echo "Use 'juvy add <path>' to add files later"
       ;;
   esac
@@ -482,8 +462,7 @@ _juvy_interactive_file_selection() {
     _juvy_add_files_to_backup "${selected_files[@]}"
     echo "Added ${#selected_files[@]} files to backup list"
   else
-    printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-    echo "Created basic backup list"
+    _juvy_add_fallback_defaults
   fi
 }
 
@@ -518,7 +497,7 @@ _juvy_validate_config_file() {
   local line key value
   local backup_dir_set=false
 
-  echo "Validating config file ($_JUVY_CONFIG_FILE)..."
+  _juvy_info "Validating config file ($_JUVY_CONFIG_FILE)..."
 
   # Test if config can be parsed without errors
   while IFS= read -r line; do
@@ -651,7 +630,7 @@ _juvy_validate_backup_file() {
   local line_num=0
   local entry parsed_data entry_type entry_path full_path
 
-  echo "Validating backup file..."
+  _juvy_info "Validating backup file..."
 
   while IFS= read -r entry; do
     (( ++line_num ))

@@ -25,15 +25,6 @@ _JUVY_REMOTE_URL=""
 _JUVY_REMOTE_PUSH=""
 _JUVY_REMOTE_NAME=""
 _JUVY_PLATFORM=""
-_JUVY_USE_COLOR="false"
-_JUVY_VERBOSE="false"
-_JUVY_DEBUG="false"
-
-_JUVY_COLOR_INFO=""
-_JUVY_COLOR_WARN=""
-_JUVY_COLOR_ERROR=""
-_JUVY_COLOR_SUCCESS=""
-_JUVY_COLOR_RESET=""
 
 # Global arrays for backup entry collection (Bash 3.2 compatible)
 _JUVY_INCLUDE_PATHS=()
@@ -89,71 +80,6 @@ _juvy_init_paths() {
   _JUVY_CONFIG_FILE="$_JUVY_CONFIG_DIR/config"
   _JUVY_BACKUP_FILE="$_JUVY_CONFIG_DIR/backup"
   _JUVY_LOG_FILE="$_JUVY_CONFIG_DIR/log"
-
-  _juvy_init_output
-}
-
-_juvy_is_truthy() {
-  case "${1:-}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-_juvy_init_output() {
-  if _juvy_is_truthy "${JUVY_VERBOSE:-}"; then
-    _JUVY_VERBOSE="true"
-  else
-    _JUVY_VERBOSE="false"
-  fi
-
-  if _juvy_is_truthy "${JUVY_DEBUG:-}"; then
-    _JUVY_DEBUG="true"
-  else
-    _JUVY_DEBUG="false"
-  fi
-
-  if [[ -n "${JUVY_COLOR:-}" ]]; then
-    if _juvy_is_truthy "${JUVY_COLOR:-}"; then
-      _JUVY_USE_COLOR="true"
-    else
-      _JUVY_USE_COLOR="false"
-    fi
-  elif [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
-    _JUVY_USE_COLOR="true"
-  else
-    _JUVY_USE_COLOR="false"
-  fi
-
-  if [[ "$_JUVY_USE_COLOR" == "true" ]]; then
-    _JUVY_COLOR_INFO="\033[0;36m"
-    _JUVY_COLOR_WARN="\033[0;33m"
-    _JUVY_COLOR_ERROR="\033[0;31m"
-    _JUVY_COLOR_SUCCESS="\033[0;32m"
-    _JUVY_COLOR_RESET="\033[0m"
-  else
-    _JUVY_COLOR_INFO=""
-    _JUVY_COLOR_WARN=""
-    _JUVY_COLOR_ERROR=""
-    _JUVY_COLOR_SUCCESS=""
-    _JUVY_COLOR_RESET=""
-  fi
-}
-
-_juvy_out_info() {
-  printf "%b\n" "${_JUVY_COLOR_INFO}[INFO]${_JUVY_COLOR_RESET} $*"
-}
-
-_juvy_out_warn() {
-  printf "%b\n" "${_JUVY_COLOR_WARN}[WARN]${_JUVY_COLOR_RESET} $*" >&2
-}
-
-_juvy_out_error() {
-  printf "%b\n" "${_JUVY_COLOR_ERROR}[ERROR]${_JUVY_COLOR_RESET} $*" >&2
-}
-
-_juvy_out_success() {
-  printf "%b\n" "${_JUVY_COLOR_SUCCESS}[OK]${_JUVY_COLOR_RESET} $*"
 }
 
 ## CONFIGURATION FUNCTIONS ###################################################
@@ -255,7 +181,7 @@ _juvy_parse_quoted_value() {
 
 _juvy_validate_backup_file_exists() {
   if [[ ! -f "$_JUVY_BACKUP_FILE" ]]; then
-    _juvy_out_error "Backup file not found. Run 'juvy init' first."
+    _juvy_error "Backup file not found. Run 'juvy init' first."
     return 1
   fi
   return 0
@@ -263,8 +189,8 @@ _juvy_validate_backup_file_exists() {
 
 _juvy_validate_backup_dir_exists() {
   if [[ ! -d "$_JUVY_BACKUP_DIR" ]]; then
-    _juvy_out_error "Backup directory not found: $_JUVY_BACKUP_DIR"
-    _juvy_out_warn "   Run 'juvy init' to set up backup directory"
+    _juvy_error "Backup directory not found: $_JUVY_BACKUP_DIR"
+    _juvy_warn "Run 'juvy init' to set up backup directory"
     return 1
   fi
   return 0
@@ -272,7 +198,7 @@ _juvy_validate_backup_dir_exists() {
 
 _juvy_validate_backup_dir_configured() {
   if [[ ! -d "$_JUVY_BACKUP_DIR" ]]; then
-    _juvy_out_error "juvy: Set JUVY_BACKUP_DIR value in $_JUVY_CONFIG_FILE"
+    _juvy_error "juvy: Set JUVY_BACKUP_DIR value in $_JUVY_CONFIG_FILE"
     return 1
   fi
   return 0
@@ -298,7 +224,7 @@ _juvy_rsync_simple() {
   rsync_exit_code=$?
 
   if [[ $rsync_exit_code -eq 0 ]]; then
-    if [[ "$_JUVY_VERBOSE" == "true" && -n "$rsync_output" ]]; then
+    if [[ "${JUVY_VERBOSE:-}" == "1" && -n "$rsync_output" ]]; then
       printf "%s\n" "$rsync_output"
     fi
     return 0
@@ -306,7 +232,7 @@ _juvy_rsync_simple() {
 
   # Handle partial transfer as success if files were transferred (for restore operations)
   if [[ $rsync_exit_code -eq 23 ]] && [[ "$rsync_output" == *"sent "* ]]; then
-    if [[ "$_JUVY_VERBOSE" == "true" && -n "$rsync_output" ]]; then
+    if [[ "${JUVY_VERBOSE:-}" == "1" && -n "$rsync_output" ]]; then
       printf "%s\n" "$rsync_output"
     fi
     return 0
@@ -315,29 +241,29 @@ _juvy_rsync_simple() {
   # Show user-friendly error message
   case $rsync_exit_code in
     1)
-      _juvy_out_error "rsync syntax or usage error"
+      _juvy_error "rsync syntax or usage error"
       ;;
     2)
-      _juvy_out_error "rsync protocol incompatibility"
+      _juvy_error "rsync protocol incompatibility"
       ;;
     11)
-      _juvy_out_error "rsync file I/O error"
+      _juvy_error "rsync file I/O error"
       ;;
     12)
-      _juvy_out_error "rsync protocol data stream error"
+      _juvy_error "rsync protocol data stream error"
       ;;
     23)
-      _juvy_out_error "rsync partial transfer: some files could not be copied"
+      _juvy_error "rsync partial transfer: some files could not be copied"
       ;;
     24)
-      _juvy_out_error "rsync source files vanished"
+      _juvy_error "rsync source files vanished"
       ;;
     *)
-      _juvy_out_error "rsync failed with error code $rsync_exit_code"
+      _juvy_error "rsync failed with error code $rsync_exit_code"
       ;;
   esac
 
-  _juvy_out_warn "See $_JUVY_LOG_FILE for details"
+  _juvy_warn "See $_JUVY_LOG_FILE for details"
   _juvy_log_error "rsync failed (exit code $rsync_exit_code): $rsync_output"
   return $rsync_exit_code
 }
@@ -349,6 +275,12 @@ juvy() {
   # Initialize paths and load configuration at start of each command
   _juvy_init_paths
   _juvy_load_config
+
+  # Check for verbose flag before command
+  if [[ "${1:-}" == "-v" ]]; then
+    export JUVY_VERBOSE=1
+    shift
+  fi
 
   case $1 in
     init)
@@ -413,7 +345,10 @@ juvy() {
 _juvy_help() {
   echo "juvy $_JUVY_VERSION - dotfile backup utility"
   echo ""
-  echo "Usage: juvy <command>"
+  echo "Usage: juvy [-v] <command>"
+  echo ""
+  echo "Options:"
+  echo "  -v            Enable verbose output (show progress messages)"
   echo ""
   echo "Commands:"
   echo "  init        Initialize juvy configuration"
@@ -642,69 +577,64 @@ _juvy_array_contains() {
   return 1
 }
 
+_juvy_add_fallback_defaults() {
+  local added=false
+  if [[ -f "$HOME/.zshrc" ]]; then
+    echo "~/.zshrc" >> "$_JUVY_BACKUP_FILE"
+    added=true
+  fi
+  if [[ -f "$HOME/.gitconfig" ]]; then
+    echo "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
+    added=true
+  fi
+  if [[ "$added" == "false" ]]; then
+    echo "No default files found to add"
+  fi
+}
+
 _juvy_init_smart_defaults() {
   local found_files=()
-  local recommended_files=()
-  local sensitive_files=()
-  local all_patterns=()
-  local recommended_patterns=()
-  local sensitive_patterns=()
+  local patterns=()
   local choice
 
-  # Define dotfile patterns to search for
-  all_patterns=(
+  # Define dotfile patterns to search for (excludes sensitive files like SSH, gh CLI, AWS)
+  patterns=(
     # Shell configs
     "~/.zshrc" "~/.bashrc" "~/.profile" "~/.bash_profile"
+    "~/.zshenv" "~/.zprofile" "~/.inputrc"
     # Git
     "~/.gitconfig" "~/.gitignore_global" "~/.gitignore"
-    # SSH (sensitive)
-    "~/.ssh/config" "~/.ssh/known_hosts"
     # Editors
     "~/.vimrc" "~/.config/nvim/"
     "~/.emacs" "~/.emacs.d/"
+    "~/.config/helix/" "~/.ideavimrc"
     # Terminal
     "~/.tmux.conf" "~/.alacritty.yml" "~/.alacritty.toml"
-    # Tools
-    "~/.config/gh/" "~/.aws/config" "~/.npmrc"
+    "~/.config/kitty/" "~/.config/wezterm/" "~/.config/starship.toml" "~/.config/zellij/"
+    # Development tools
+    "~/.npmrc" "~/.tool-versions" "~/.config/mise/" "~/.mise.toml"
+    "~/.cargo/config.toml" "~/.gemrc" "~/.yarnrc" "~/.yarnrc.yml" "~/.config/pip/"
+    # CLI utilities
+    "~/.config/lazygit/" "~/.config/bat/" "~/.config/htop/" "~/.hushlogin"
+    # macOS
+    "~/.config/karabiner/"
   )
 
-  recommended_patterns=(
-    "~/.zshrc" "~/.bashrc" "~/.profile" "~/.bash_profile"
-    "~/.gitconfig" "~/.gitignore_global" "~/.gitignore"
-    "~/.vimrc" "~/.config/nvim/"
-    "~/.emacs" "~/.emacs.d/"
-    "~/.tmux.conf" "~/.alacritty.yml" "~/.alacritty.toml"
-    "~/.npmrc"
-  )
-
-  sensitive_patterns=(
-    "~/.ssh/config" "~/.ssh/known_hosts"
-    "~/.config/gh/" "~/.aws/config"
-  )
-
-  echo "Scanning for common dotfiles..."
-  echo ""
+  _juvy_info "Scanning for common dotfiles..."
+  _juvy_info ""
 
   # Scan for existing files
   local pattern full_path
-  for pattern in "${all_patterns[@]}"; do
+  for pattern in "${patterns[@]}"; do
     full_path="${pattern/#\~/$HOME}"
     if [[ -e "$full_path" ]]; then
       found_files+=("$pattern")
-
-      if _juvy_array_contains "$pattern" "${recommended_patterns[@]}"; then
-        recommended_files+=("$pattern")
-      fi
-
-      if _juvy_array_contains "$pattern" "${sensitive_patterns[@]}"; then
-        sensitive_files+=("$pattern")
-      fi
     fi
   done
 
   if [[ ${#found_files[@]} -eq 0 ]]; then
     echo "No common dotfiles found. Creating basic backup list..."
-    printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
+    _juvy_add_fallback_defaults
     return 0
   fi
 
@@ -712,19 +642,8 @@ _juvy_init_smart_defaults() {
   echo "Found these files you might want to backup:"
   echo ""
 
-  local file file_status warning file_type
+  local file file_type
   for file in "${found_files[@]}"; do
-    file_status="o"
-    warning=""
-
-    if _juvy_array_contains "$file" "${recommended_files[@]}"; then
-      file_status="+"
-    fi
-
-    if _juvy_array_contains "$file" "${sensitive_files[@]}"; then
-      warning=" (contains sensitive data)"
-    fi
-
     full_path="${file/#\~/$HOME}"
     file_type="(config)"
 
@@ -736,23 +655,20 @@ _juvy_init_smart_defaults() {
       file_type="(git config)"
     elif [[ "$file" == *"vim"* || "$file" == *"emacs"* ]]; then
       file_type="(editor config)"
-    elif [[ "$file" == *"ssh"* ]]; then
-      file_type="(ssh config)"
     elif [[ "$file" == *"tmux"* || "$file" == *"alacritty"* ]]; then
       file_type="(terminal config)"
     fi
 
-    printf "  %s %s %s%s\n" "$file_status" "$file" "$file_type" "$warning"
+    printf "  %s %s\n" "$file" "$file_type"
   done
 
   echo ""
   echo "Select files to track:"
   echo "  a) All files"
-  echo "  r) Recommended only (non-sensitive)"
   echo "  c) Choose individually"
   echo "  s) Skip - I'll add manually"
   echo ""
-  echo -n "Choice [a/r/c/s]: "
+  echo -n "Choice [a/c/s]: "
   read -r choice
 
   case "$choice" in
@@ -760,21 +676,11 @@ _juvy_init_smart_defaults() {
       _juvy_add_files_to_backup "${found_files[@]}"
       echo "Added all found files to backup list"
       ;;
-    r|R)
-      if [[ ${#recommended_files[@]} -gt 0 ]]; then
-        _juvy_add_files_to_backup "${recommended_files[@]}"
-        echo "Added recommended files to backup list"
-      else
-        printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-        echo "Created basic backup list"
-      fi
-      ;;
     c|C)
       _juvy_interactive_file_selection "${found_files[@]}"
       ;;
     s|S|*)
-      printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-      echo "Created basic backup list"
+      _juvy_add_fallback_defaults
       echo "Use 'juvy add <path>' to add files later"
       ;;
   esac
@@ -826,8 +732,7 @@ _juvy_interactive_file_selection() {
     _juvy_add_files_to_backup "${selected_files[@]}"
     echo "Added ${#selected_files[@]} files to backup list"
   else
-    printf '%s\n%s\n' "~/.zshrc" "~/.gitconfig" >> "$_JUVY_BACKUP_FILE"
-    echo "Created basic backup list"
+    _juvy_add_fallback_defaults
   fi
 }
 
@@ -862,7 +767,7 @@ _juvy_validate_config_file() {
   local line key value
   local backup_dir_set=false
 
-  echo "Validating config file ($_JUVY_CONFIG_FILE)..."
+  _juvy_info "Validating config file ($_JUVY_CONFIG_FILE)..."
 
   # Test if config can be parsed without errors
   while IFS= read -r line; do
@@ -995,7 +900,7 @@ _juvy_validate_backup_file() {
   local line_num=0
   local entry parsed_data entry_type entry_path full_path
 
-  echo "Validating backup file..."
+  _juvy_info "Validating backup file..."
 
   while IFS= read -r entry; do
     (( ++line_num ))
@@ -1081,47 +986,49 @@ _juvy_backup() {
   _juvy_validate_backup_dir_configured || return 1
   _juvy_validate_backup_file_exists || return 1
 
-  _juvy_out_info "Starting backup process..."
+  _juvy_info "Starting backup process..."
 
   # Validate backup file before starting rsync
   _juvy_validate_backup_file
 
   # Process backup entries with support for directories and files
   if ! _juvy_process_backup_entries; then
-    _juvy_out_error "Backup failed"
+    _juvy_error "Backup failed"
     _juvy_log "BACKUP FAILED: rsync error"
     return 1
   fi
 
-  _juvy_out_success "Files synced successfully"
+  _juvy_info "Files synced successfully"
+
+
   if [[ -n $(_juvy_git status --porcelain) ]]; then
     _juvy_git add -A
     if ! _juvy_git commit -m "Backup: $(_juvy_timestamp)"; then
-      _juvy_out_error "Git commit failed, but files were synced"
+      _juvy_error "Git commit failed, but files were synced"
       _juvy_log "BACKUP FAILED: git commit error"
       return 1
     fi
-    _juvy_out_success "Changes committed to git"
+    _juvy_info "Changes committed to git"
 
     # Auto-push if remote is configured and enabled
     local push_status=""
     if [[ "$_JUVY_REMOTE_PUSH" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
       if _juvy_remote_push_auto; then
-        _juvy_out_success "Changes pushed to remote"
+        _juvy_info "Changes pushed to remote"
         push_status=" (pushed to remote)"
       else
-        _juvy_out_warn "Failed to push to remote (run 'juvy remote push' manually)"
+        _juvy_warn "Failed to push to remote (run 'juvy remote push' manually)"
         push_status=" (push failed)"
       fi
     fi
 
     _juvy_log "BACKUP OK: changes committed${push_status}"
   else
-    _juvy_out_info "No changes to commit"
+    _juvy_info "No changes to commit"
     _juvy_log "BACKUP OK: no changes"
   fi
 
-  _juvy_out_success "Backup completed successfully"
+  _juvy_result "Backup completed successfully"
 }
 
 _juvy_doctor() {
@@ -1139,8 +1046,8 @@ _juvy_doctor() {
         shift
         ;;
       -*)
-        _juvy_out_error "Unknown option: $1"
-        _juvy_out_warn "Usage: juvy doctor [--fix]"
+        _juvy_error "Unknown option: $1"
+        _juvy_warn "Usage: juvy doctor [--fix]"
         return 1
         ;;
       *)
@@ -1149,64 +1056,64 @@ _juvy_doctor() {
     esac
   done
 
-  _juvy_out_info "Running juvy doctor..."
+  _juvy_info "Running juvy doctor..."
 
   if [[ "$fix_mode" == "true" ]]; then
     local fixes=0
     local juvy_script="$HOME/.juvy/juvy"
 
-    _juvy_out_info "Applying quick fixes..."
+    _juvy_info "Applying quick fixes..."
 
     if [[ ! -d "$_JUVY_CONFIG_DIR" ]]; then
       if mkdir -p "$_JUVY_CONFIG_DIR" >/dev/null 2>&1; then
-        _juvy_out_success "Created config directory"
+        _juvy_result "Created config directory"
         (( ++fixes ))
       else
-        _juvy_out_error "Failed to create config directory: $_JUVY_CONFIG_DIR"
+        _juvy_error "Failed to create config directory: $_JUVY_CONFIG_DIR"
       fi
     fi
 
     if [[ ! -f "$_JUVY_CONFIG_FILE" ]]; then
       if touch "$_JUVY_CONFIG_FILE" >/dev/null 2>&1; then
-        _juvy_out_success "Created config file"
+        _juvy_result "Created config file"
         (( ++fixes ))
       else
-        _juvy_out_error "Failed to create config file: $_JUVY_CONFIG_FILE"
+        _juvy_error "Failed to create config file: $_JUVY_CONFIG_FILE"
       fi
     fi
 
     if [[ -n "$_JUVY_CONFIG_DIR" && -f "$_JUVY_CONFIG_FILE" ]]; then
       if ! grep -q "^JUVY_BACKUP_DIR=" "$_JUVY_CONFIG_FILE" 2>/dev/null; then
         _juvy_update_config "JUVY_BACKUP_DIR" "$backup_dir"
-        _juvy_out_success "Wrote JUVY_BACKUP_DIR to config"
+        _juvy_result "Wrote JUVY_BACKUP_DIR to config"
         (( ++fixes ))
       fi
     fi
 
     if [[ ! -f "$_JUVY_BACKUP_FILE" ]]; then
       if touch "$_JUVY_BACKUP_FILE" >/dev/null 2>&1; then
-        _juvy_out_success "Created backup file"
+        _juvy_result "Created backup file"
         (( ++fixes ))
       else
-        _juvy_out_error "Failed to create backup file: $_JUVY_BACKUP_FILE"
+        _juvy_error "Failed to create backup file: $_JUVY_BACKUP_FILE"
       fi
     fi
 
     if [[ -n "$backup_dir" && ! -e "$backup_dir" ]]; then
       if mkdir -p "$backup_dir" >/dev/null 2>&1; then
-        _juvy_out_success "Created backup directory"
+        _juvy_result "Created backup directory"
         (( ++fixes ))
       else
-        _juvy_out_error "Failed to create backup directory: $backup_dir"
+        _juvy_error "Failed to create backup directory: $backup_dir"
       fi
     fi
 
     if [[ -n "$backup_dir" && -d "$backup_dir" && ! -d "$backup_dir/.git" ]]; then
       if git init -b main "$backup_dir" >/dev/null 2>&1; then
-        _juvy_out_success "Initialized backup git repository"
+        _juvy_result "Initialized backup git repository"
         (( ++fixes ))
       else
-        _juvy_out_error "Failed to initialize backup git repository: $backup_dir"
+        _juvy_error "Failed to initialize backup git repository: $backup_dir"
       fi
     fi
 
@@ -1217,7 +1124,7 @@ _juvy_doctor() {
 
       if [[ ! -f "$rc_file" ]]; then
         if touch "$rc_file" >/dev/null 2>&1; then
-          _juvy_out_success "Created $rc_file"
+          _juvy_result "Created $rc_file"
           (( ++fixes ))
         fi
       fi
@@ -1228,97 +1135,97 @@ _juvy_doctor() {
           echo "# juvy dotfile backup tool"
           echo 'export PATH="$HOME/.juvy:$PATH"'
         } >> "$rc_file"
-        _juvy_out_success "Added juvy to PATH in $rc_file"
+        _juvy_result "Added juvy to PATH in $rc_file"
         (( ++fixes ))
       fi
     fi
 
     if (( fixes == 0 )); then
-      _juvy_out_info "No quick fixes applied"
+      _juvy_info "No quick fixes applied"
     fi
   fi
 
   # Prerequisites - check for bash or zsh
   local current_shell="${SHELL##*/}"
   if [[ "$current_shell" != "bash" && "$current_shell" != "zsh" ]]; then
-    _juvy_out_error "Shell is not bash or zsh: $SHELL"
+    _juvy_error "Shell is not bash or zsh: $SHELL"
     (( ++issues ))
   else
-    _juvy_out_info "Shell: $current_shell"
+    _juvy_info "Shell: $current_shell"
   fi
 
   if command -v rsync >/dev/null 2>&1; then
-    _juvy_out_success "rsync available"
+    _juvy_result "rsync available"
   else
-    _juvy_out_error "Missing dependency: rsync"
+    _juvy_error "Missing dependency: rsync"
     (( ++issues ))
   fi
 
   if command -v git >/dev/null 2>&1; then
-    _juvy_out_success "git available"
+    _juvy_result "git available"
   else
-    _juvy_out_error "Missing dependency: git"
+    _juvy_error "Missing dependency: git"
     (( ++issues ))
   fi
 
   # Config directory and file
   if [[ -d "$_JUVY_CONFIG_DIR" ]]; then
     if [[ -w "$_JUVY_CONFIG_DIR" ]]; then
-      _juvy_out_success "Config directory: $_JUVY_CONFIG_DIR"
+      _juvy_result "Config directory: $_JUVY_CONFIG_DIR"
     else
-      _juvy_out_error "Config directory not writable: $_JUVY_CONFIG_DIR"
+      _juvy_error "Config directory not writable: $_JUVY_CONFIG_DIR"
       (( ++issues ))
     fi
   else
-    _juvy_out_error "Config directory missing: $_JUVY_CONFIG_DIR"
+    _juvy_error "Config directory missing: $_JUVY_CONFIG_DIR"
     (( ++issues ))
   fi
 
   if [[ -f "$_JUVY_CONFIG_FILE" ]]; then
     if _juvy_validate_config_file; then
-      _juvy_out_success "Config file parsed"
+      _juvy_result "Config file parsed"
     else
       (( ++issues ))
     fi
   else
-    _juvy_out_error "Config file missing: $_JUVY_CONFIG_FILE"
+    _juvy_error "Config file missing: $_JUVY_CONFIG_FILE"
     (( ++issues ))
   fi
 
   # Backup file
   if [[ -f "$_JUVY_BACKUP_FILE" ]]; then
     if _juvy_validate_backup_file; then
-      _juvy_out_success "Backup file parsed"
+      _juvy_result "Backup file parsed"
     else
       (( ++issues ))
     fi
   else
-    _juvy_out_error "Backup file missing: $_JUVY_BACKUP_FILE"
+    _juvy_error "Backup file missing: $_JUVY_BACKUP_FILE"
     (( ++issues ))
   fi
 
   # Backup directory and git repository
   if [[ -z "$backup_dir" ]]; then
-    _juvy_out_error "Backup directory not configured (JUVY_BACKUP_DIR missing)"
+    _juvy_error "Backup directory not configured (JUVY_BACKUP_DIR missing)"
     (( ++issues ))
   elif [[ -e "$backup_dir" && ! -d "$backup_dir" ]]; then
-    _juvy_out_error "Backup path is not a directory: $backup_dir"
+    _juvy_error "Backup path is not a directory: $backup_dir"
     (( ++issues ))
   elif [[ ! -d "$backup_dir" ]]; then
-    _juvy_out_error "Backup directory missing: $backup_dir"
+    _juvy_error "Backup directory missing: $backup_dir"
     (( ++issues ))
   else
     if [[ -w "$backup_dir" ]]; then
-      _juvy_out_success "Backup directory: $backup_dir"
+      _juvy_result "Backup directory: $backup_dir"
     else
-      _juvy_out_error "Backup directory not writable: $backup_dir"
+      _juvy_error "Backup directory not writable: $backup_dir"
       (( ++issues ))
     fi
 
     if _juvy_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      _juvy_out_success "Backup git repository found"
+      _juvy_result "Backup git repository found"
     else
-      _juvy_out_error "Backup directory is not a git repository (run 'juvy init')"
+      _juvy_error "Backup directory is not a git repository (run 'juvy init')"
       (( ++issues ))
     fi
   fi
@@ -1330,51 +1237,51 @@ _juvy_doctor() {
         local actual_url
         actual_url="$(_juvy_git remote get-url "$remote_name" 2>/dev/null)"
         if [[ -n "$actual_url" && "$actual_url" != "$remote_url" ]]; then
-          _juvy_out_warn "Remote URL mismatch: config=$remote_url git=$actual_url"
+          _juvy_warn "Remote URL mismatch: config=$remote_url git=$actual_url"
           (( ++warnings ))
         else
-          _juvy_out_success "Remote '$remote_name' configured"
+          _juvy_result "Remote '$remote_name' configured"
         fi
 
         if _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
-          _juvy_out_success "Remote reachable"
+          _juvy_result "Remote reachable"
         else
-          _juvy_out_warn "Remote not reachable (check network/auth)"
+          _juvy_warn "Remote not reachable (check network/auth)"
           (( ++warnings ))
         fi
       else
-        _juvy_out_error "Remote '$remote_name' not found in backup repo"
+        _juvy_error "Remote '$remote_name' not found in backup repo"
         (( ++issues ))
       fi
     else
-      _juvy_out_error "Cannot check remote: backup repo not initialized"
+      _juvy_error "Cannot check remote: backup repo not initialized"
       (( ++issues ))
     fi
   else
-    _juvy_out_info "No remote configured"
+    _juvy_info "No remote configured"
   fi
 
   # Shell integration
   local rc_file
   rc_file="$(_juvy_detect_rc_file)"
   if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
-    _juvy_out_success "$rc_file adds juvy to PATH"
+    _juvy_result "$rc_file adds juvy to PATH"
   else
-    _juvy_out_warn "$rc_file does not add juvy to PATH (run install.sh)"
+    _juvy_warn "$rc_file does not add juvy to PATH (run install.sh)"
     (( ++warnings ))
   fi
 
   if (( issues == 0 && warnings == 0 )); then
-    _juvy_out_success "Doctor found no issues"
+    _juvy_result "Doctor found no issues"
     return 0
   fi
 
   if (( issues > 0 )); then
-    _juvy_out_error "Doctor found $issues issue(s) and $warnings warning(s)"
+    _juvy_error "Doctor found $issues issue(s) and $warnings warning(s)"
     return 1
   fi
 
-  _juvy_out_warn "Doctor found $warnings warning(s)"
+  _juvy_warn "Doctor found $warnings warning(s)"
   return 0
 }
 
@@ -1697,21 +1604,21 @@ _juvy_process_backup_entries() {
   local entry source_path
   local home_count=0 system_count=0
 
+  _juvy_info "Processing backup entries..."
+
   _juvy_collect_backup_entries
 
-  _juvy_out_info "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
+  _juvy_info "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
 
   for entry in ${_JUVY_INCLUDE_PATHS[@]+"${_JUVY_INCLUDE_PATHS[@]}"}; do
     source_path="$(_juvy_entry_to_source_path "$entry")"
 
     if [[ "$entry" == */ ]]; then
       if [[ ! -d "$source_path" ]]; then
-        _juvy_out_warn "Directory not found: $source_path"
         continue
       fi
     else
       if [[ ! -f "$source_path" ]]; then
-        _juvy_out_warn "File not found: $source_path"
         continue
       fi
     fi
@@ -1724,25 +1631,25 @@ _juvy_process_backup_entries() {
   done
 
   if [[ ${#home_paths[@]} -gt 0 ]]; then
-    _juvy_out_info "Backing up ${#home_paths[@]} home paths..."
+    _juvy_info "Backing up ${#home_paths[@]} home paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      _juvy_out_error "Failed to build filter file for home paths"
+      _juvy_error "Failed to build filter file for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR$HOME/" > /dev/null 2>&1; then
-      _juvy_out_error "Failed to create backup directory for home paths"
+      _juvy_error "Failed to create backup directory for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "$HOME/" "$_JUVY_BACKUP_DIR$HOME/" "$temp_filter_file"; then
-      _juvy_out_error "Failed to backup home paths"
+      _juvy_error "Failed to backup home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -1752,25 +1659,25 @@ _juvy_process_backup_entries() {
   fi
 
   if [[ ${#system_paths[@]} -gt 0 ]]; then
-    _juvy_out_info "Backing up ${#system_paths[@]} system paths..."
+    _juvy_info "Backing up ${#system_paths[@]} system paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      _juvy_out_error "Failed to build filter file for system paths"
+      _juvy_error "Failed to build filter file for system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR" > /dev/null 2>&1; then
-      _juvy_out_error "Failed to create backup directory"
+      _juvy_error "Failed to create backup directory"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "/" "$_JUVY_BACKUP_DIR" "$temp_filter_file"; then
-      _juvy_out_error "Failed to backup system paths"
+      _juvy_error "Failed to backup system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -1779,7 +1686,7 @@ _juvy_process_backup_entries() {
     system_count=${#system_paths[@]}
   fi
 
-  _juvy_out_success "Processed $home_count home and $system_count system paths"
+  _juvy_info "Processed $home_count home and $system_count system paths"
   return 0
 }
 
@@ -1788,16 +1695,16 @@ _juvy_show_filter_debug() {
   local filter_file="$1"
   local line
 
-  if [[ "$_JUVY_DEBUG" != "true" ]]; then
+  if [[ "${JUVY_DEBUG:-}" != "1" ]]; then
     return 0
   fi
 
-  _juvy_out_warn "Filter file contents (for debugging):"
-  _juvy_out_warn "   ----------------------------------------"
+  _juvy_warn "Filter file contents (for debugging):"
+  _juvy_warn "   ----------------------------------------"
   while IFS= read -r line; do
-    _juvy_out_warn "   $line"
+    _juvy_warn "   $line"
   done < "$filter_file"
-  _juvy_out_warn "   ----------------------------------------"
+  _juvy_warn "   ----------------------------------------"
 }
 
 _juvy_rsync_backup_with_filters() {
@@ -1806,7 +1713,7 @@ _juvy_rsync_backup_with_filters() {
   local filter_file="$3"
   local rsync_args=(-a --delete --delete-excluded --filter="merge $filter_file")
 
-  if [[ "$_JUVY_VERBOSE" == "true" ]]; then
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
     rsync_args=(-av --delete --delete-excluded --filter="merge $filter_file")
   fi
 
@@ -1827,7 +1734,7 @@ _juvy_rsync_restore_with_filters() {
   # Use --ignore-times to force copy even when backup files are older than current files
   # (This happens when user modifies a file after backup and wants to restore the original)
   rsync_args=(-a --ignore-times --ignore-errors --filter="merge $filter_file")
-  if [[ "$_JUVY_VERBOSE" == "true" ]]; then
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
     rsync_args=(-av --ignore-times --ignore-errors --filter="merge $filter_file")
   fi
 
@@ -1865,6 +1772,32 @@ _juvy_log() {
 
 _juvy_log_error() {
   _juvy_log "ERROR: $1"
+}
+
+
+# User-facing output utilities
+# These respect JUVY_VERBOSE for progress messages
+
+_juvy_info() {
+  # Progress/status messages - only shown when verbose
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
+    echo "$@"
+  fi
+}
+
+_juvy_result() {
+  # Final results - always shown
+  echo "$@"
+}
+
+_juvy_error() {
+  # Errors - always shown to stderr
+  echo "$@" >&2
+}
+
+_juvy_warn() {
+  # Warnings - always shown to stderr
+  echo "Warning: $@" >&2
 }
 
 
@@ -2410,21 +2343,21 @@ _juvy_restore() {
   fi
 
   echo ""
-  echo "Creating safety backup..."
+  _juvy_info "Creating safety backup..."
   local safety_backup_path
   if ! safety_backup_path="$(_juvy_create_safety_backup)"; then
-    echo "Failed to create safety backup" >&2
+    _juvy_error "Failed to create safety backup"
     return 1
   fi
 
-  echo "Restoring files..."
+  _juvy_info "Restoring files..."
   if ! _juvy_perform_restore "$dry_run"; then
-    echo "Restore failed" >&2
+    _juvy_error "Restore failed"
     return 1
   fi
 
-  echo "Setting permissions..."
-  echo "Restore complete!"
+  _juvy_info "Setting permissions..."
+  _juvy_result "Restore complete!"
   echo ""
   echo "To undo: juvy restore \"$safety_backup_path\""
 }
@@ -2501,7 +2434,7 @@ _juvy_create_safety_backup() {
   safety_dir="$_JUVY_CONFIG_DIR/safety-backup/$timestamp"
 
   if ! mkdir -p "$safety_dir" > /dev/null 2>&1; then
-    echo "Failed to create safety backup directory: $safety_dir" >&2
+    _juvy_error "Failed to create safety backup directory: $safety_dir"
     return 1
   fi
 
@@ -2515,21 +2448,21 @@ _juvy_create_safety_backup() {
       dest_dir="$(dirname "$dest_path")"
 
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
-        echo "Failed to create safety backup directory: $dest_dir" >&2
+        _juvy_error "Failed to create safety backup directory: $dest_dir"
         return 1
       fi
 
       if [[ "$entry" == */ ]]; then
         if [[ -d "$source_path" ]]; then
           if ! rsync -a "$source_path" "$dest_dir/" > /dev/null 2>&1; then
-            echo "Failed to backup directory: $source_path" >&2
+            _juvy_error "Failed to backup directory: $source_path"
             return 1
           fi
         fi
       else
         if [[ -f "$source_path" ]]; then
           if ! rsync -a "$source_path" "$dest_path" > /dev/null 2>&1; then
-            echo "Failed to backup file: $source_path" >&2
+            _juvy_error "Failed to backup file: $source_path"
             return 1
           fi
         fi
@@ -2549,9 +2482,9 @@ _juvy_perform_restore() {
   local source_path entry
 
   if [[ "$dry_run" == "true" ]]; then
-    echo "Showing what would be restored from backup..."
+    _juvy_info "Showing what would be restored from backup..."
   else
-    echo "Restoring files from backup..."
+    _juvy_info "Restoring files from backup..."
   fi
 
   _juvy_collect_backup_entries
@@ -2570,13 +2503,13 @@ _juvy_perform_restore() {
     home_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$home_filter_file"; then
-      echo "Failed to build restore filter for home paths" >&2
+      _juvy_error "Failed to build restore filter for home paths"
       rm -f "$home_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_restore_with_filters "$backup_dir$HOME" "$HOME" "$home_filter_file" "$dry_run"; then
-      echo "Failed to restore home files" >&2
+      _juvy_error "Failed to restore home files"
       rm -f "$home_filter_file"
       return 1
     fi
@@ -2591,13 +2524,13 @@ _juvy_perform_restore() {
     extra_excludes=("/.git/")
 
     if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$system_filter_file" extra_excludes; then
-      echo "Failed to build restore filter for system paths" >&2
+      _juvy_error "Failed to build restore filter for system paths"
       rm -f "$system_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_restore_with_filters "$backup_dir" "/" "$system_filter_file" "$dry_run"; then
-      echo "Failed to restore system files" >&2
+      _juvy_error "Failed to restore system files"
       rm -f "$system_filter_file"
       return 1
     fi
@@ -2606,7 +2539,7 @@ _juvy_perform_restore() {
   fi
 
   if [[ "$dry_run" != "true" ]]; then
-    echo "Files restored successfully"
+    _juvy_result "Files restored successfully"
   fi
   return 0
 }
@@ -3020,7 +2953,7 @@ _juvy_remote_set() {
 
   _juvy_validate_backup_dir_exists || return 1
 
-  echo "Setting up git remote..."
+  _juvy_info "Setting up git remote..."
 
   # Remove existing remote if it exists
   if _juvy_git remote get-url "$remote_name" >/dev/null 2>&1; then
@@ -3029,12 +2962,12 @@ _juvy_remote_set() {
 
   # Add remote to git repository
   if ! _juvy_git remote add "$remote_name" "$url"; then
-    echo "Failed to add remote" >&2
+    _juvy_error "Failed to add remote"
     return 1
   fi
 
   # Test connection
-  echo "Testing connection to remote..."
+  _juvy_info "Testing connection to remote..."
   if ! _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
     echo "Warning: Could not connect to remote (check URL and authentication)" >&2
     echo "   You can still proceed, but push/pull operations may fail" >&2

@@ -45,7 +45,8 @@ teardown() {
   mkdir -p "$JUVY_CONFIG_DIR"
   echo "JUVY_BACKUP_DIR='$BACKUP_DIR'" > "$JUVY_CONFIG_DIR/config"
 
-  # Create test dotfiles
+  # Create test dotfiles (.zshrc needed for fallback defaults when no input provided)
+  echo "zshrc content" > "$HOME/.zshrc"
   echo "bashrc content" > "$HOME/.bashrc"
   mkdir -p "$HOME/.config/nvim"
   echo "nvim config" > "$HOME/.config/nvim/init.lua"
@@ -73,14 +74,14 @@ teardown() {
   # Create a dotfile
   echo "test" > "$HOME/.bashrc"
 
-  # First init accepting defaults (empty inputs)
-  printf '\n\n' | juvy init
+  # First init with accept defaults (three newlines for iCloud/backup dir/remote prompts)
+  printf '\n\n\n' | juvy init
 
   # Verify backup file exists
   assert_file_exists "$JUVY_CONFIG_DIR/backup"
 
   # Second init should preserve existing config
-  printf '\n\n' | juvy init
+  printf '\n\n\n' | juvy init
 
   # Config should still have backup dir
   assert_file_contains "$JUVY_CONFIG_DIR/config" "JUVY_BACKUP_DIR"
