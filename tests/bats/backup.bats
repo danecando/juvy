@@ -66,8 +66,8 @@ teardown() {
   # Missing file should not create anything
   assert_not_backed_up "~/.missing-file"
 
-  # Output should mention the missing file
-  assert_output_contains "$output" "not found"
+  # Output should mention the missing file (validation stage reports it)
+  assert_output_contains "$output" "Invalid paths found"
 }
 
 @test "backup multiple files" {

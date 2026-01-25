@@ -271,12 +271,10 @@ _juvy_process_backup_entries() {
 
     if [[ "$entry" == */ ]]; then
       if [[ ! -d "$source_path" ]]; then
-        echo "Directory not found: $source_path" >&2
         continue
       fi
     else
       if [[ ! -f "$source_path" ]]; then
-        echo "File not found: $source_path" >&2
         continue
       fi
     fi
