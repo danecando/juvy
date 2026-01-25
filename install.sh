@@ -8,15 +8,15 @@ JUVY_SCRIPT="$JUVY_DIR/juvy"
 JUVY_REPO_BASE="https://raw.githubusercontent.com/danecando/juvy/main"
 
 print_error() {
-  echo "Error: $1" >&2
+  echo "$1" >&2
 }
 
 print_success() {
-  echo "OK: $1"
+  echo "$1"
 }
 
 print_info() {
-  echo "Info: $1"
+  echo "$1"
 }
 
 # Detect current shell for rc file
