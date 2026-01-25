@@ -85,7 +85,7 @@ _juvy_help() {
   echo "  add         Add files/directories to backup list (or edit with \$EDITOR)"
   echo "              'add ~/.zshrc' or 'add ~/.config/nvim/'"
   echo "  remove      Remove files/directories from backup list (or edit with \$EDITOR)"
-  echo "              'remove ~/.zshrc' or 'remove ~/.config/nvim/'"
+  echo "              'remove ~/.zshrc' or 'remove --delete ~/.zshrc'"
   echo "  backup      Backup files and directories to configured directory"
   echo "  restore     Restore all files from latest backup"
   echo "              'restore --dry-run' shows what would be restored"

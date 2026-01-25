@@ -355,7 +355,7 @@ _juvy_help() {
   echo "  add         Add files/directories to backup list (or edit with \$EDITOR)"
   echo "              'add ~/.zshrc' or 'add ~/.config/nvim/'"
   echo "  remove      Remove files/directories from backup list (or edit with \$EDITOR)"
-  echo "              'remove ~/.zshrc' or 'remove ~/.config/nvim/'"
+  echo "              'remove ~/.zshrc' or 'remove --delete ~/.zshrc'"
   echo "  backup      Backup files and directories to configured directory"
   echo "  restore     Restore all files from latest backup"
   echo "              'restore --dry-run' shows what would be restored"
@@ -2209,15 +2209,20 @@ _juvy_add() {
 _juvy_remove() {
   local paths=()
   local p
+  local delete_from_backup=false
 
   _juvy_validate_backup_file_exists || return 1
 
   # Parse path arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --delete)
+        delete_from_backup=true
+        shift
+        ;;
       -*)
         echo "Unknown flag: $1" >&2
-        echo "Usage: juvy remove [path...]" >&2
+        echo "Usage: juvy remove [--delete] [path...]" >&2
         return 1
         ;;
       *)
@@ -2278,6 +2283,37 @@ _juvy_remove() {
         grep -Fxv "$entry_to_remove" "$_JUVY_BACKUP_FILE" > "$_JUVY_BACKUP_FILE.tmp"
         mv "$_JUVY_BACKUP_FILE.tmp" "$_JUVY_BACKUP_FILE"
         echo "Removed '$entry_to_remove' from backup list"
+
+        # Check if file exists in backup directory and offer to delete
+        local backup_path
+        backup_path="$(_juvy_entry_to_backup_path "$entry_to_remove")"
+
+        if [[ -e "$backup_path" ]]; then
+          local should_delete=false
+
+          if [[ "$delete_from_backup" == "true" ]]; then
+            should_delete=true
+          elif [[ -t 0 ]]; then
+            # Only prompt if running interactively
+            echo -n "Also delete from backup directory? [y/N] "
+            local delete_confirm
+            read -r delete_confirm
+            if [[ "$delete_confirm" == [yY]* ]]; then
+              should_delete=true
+            fi
+          fi
+
+          if [[ "$should_delete" == "true" ]]; then
+            rm -rf "$backup_path"
+            echo "Deleted '$entry_to_remove' from backup"
+
+            # Commit the deletion if there are changes
+            if [[ -n $(_juvy_git status --porcelain) ]]; then
+              _juvy_git add -A
+              _juvy_git commit -m "Remove: $entry_to_remove" >/dev/null 2>&1
+            fi
+          fi
+        fi
       else
         echo "Path not in backup list: $p"
       fi

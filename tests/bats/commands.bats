@@ -100,6 +100,39 @@ teardown() {
   [[ "$output" == *"not in backup list"* || "$output" == *"not found"* ]]
 }
 
+@test "remove --delete deletes file from backup directory" {
+  create_test_file "~/.testrc" "test"
+  add_to_backup_list "~/.testrc"
+  juvy backup
+
+  local backup_path
+  backup_path="$(get_backup_path "~/.testrc")"
+  [ -f "$backup_path" ]
+
+  run juvy remove --delete "~/.testrc"
+
+  [ "$status" -eq 0 ]
+  [ ! -f "$backup_path" ]
+  [[ "$output" == *"Deleted"* ]]
+}
+
+@test "remove without --delete preserves backup file in non-interactive mode" {
+  create_test_file "~/.testrc" "test"
+  add_to_backup_list "~/.testrc"
+  juvy backup
+
+  local backup_path
+  backup_path="$(get_backup_path "~/.testrc")"
+  [ -f "$backup_path" ]
+
+  # Non-interactive (no TTY) should not prompt and preserve backup
+  run juvy remove "~/.testrc"
+
+  [ "$status" -eq 0 ]
+  [ -f "$backup_path" ]
+  assert_file_not_contains "$JUVY_CONFIG_DIR/backup" "~/.testrc"
+}
+
 # ------------------------------------------------------------------------------
 # list command
 # ------------------------------------------------------------------------------
