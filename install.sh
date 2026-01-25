@@ -89,6 +89,7 @@ if ! grep -q '\.juvy' "$RC_FILE" 2>/dev/null; then
     echo ""
     echo "# juvy dotfile backup tool"
     echo 'export PATH="$HOME/.juvy:$PATH"'
+    echo '( juvy backup >/dev/null 2>&1 & )'
   } >> "$RC_FILE"
   print_success "Added juvy to PATH in $RC_FILE"
 else

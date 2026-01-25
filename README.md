@@ -4,21 +4,25 @@ Simple dotfile backup utility using rsync + git for versioned backups.
 
 Works with bash and zsh on macOS and Linux. Automatically detects common dotfiles during setup. Default backup directory syncs via iCloud on macOS.
 
-## Installation
+## Quick Start
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
 ```
 
-Then restart your shell or open a new terminal.
-
-## Quick Start
+Restart your shell, then:
 
 ```bash
-juvy init    # Initialize and auto-detect common dotfiles
-juvy backup  # Create your first backup
-juvy list    # See what's being tracked
+juvy init
 ```
+
+Done. Backups run automatically every time you open a terminal.
+
+## How It Works
+
+Every shell startup triggers `juvy backup` in the background. Rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
+
+To disable automatic backups, remove the `juvy backup` line from your shell rc file (`~/.zshrc` or `~/.bashrc`).
 
 ## Commands
 
@@ -31,7 +35,7 @@ juvy list    # See what's being tracked
 
 ### Backup & Restore
 
-- `juvy backup` - Backup all tracked files with git versioning
+- `juvy backup` - Backup tracked files (runs automatically on shell startup)
 - `juvy restore [--dry-run]` - Restore files from latest backup
 - `juvy list` - Show tracked files
 - `juvy status [file]` - Show changes since last backup
