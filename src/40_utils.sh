@@ -555,10 +555,10 @@ _juvy_uninstall_internal() {
   # Remove from shell rc files
   local rc_file
   for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
+    if [[ -f "$rc_file" ]] && grep -q '\.juvy\|juvy backup' "$rc_file"; then
       # Create a temporary file without the juvy lines
       {
-        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool"
+        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool" | grep -v "juvy backup"
       } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
       echo "Removed juvy from $rc_file"
     fi
