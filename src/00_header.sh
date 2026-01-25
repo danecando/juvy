@@ -81,4 +81,3 @@ _juvy_init_paths() {
   _JUVY_BACKUP_FILE="$_JUVY_CONFIG_DIR/backup"
   _JUVY_LOG_FILE="$_JUVY_CONFIG_DIR/log"
 }
-

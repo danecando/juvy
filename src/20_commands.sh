@@ -488,7 +488,7 @@ _juvy_uninstall() {
   echo ""
   echo "juvy has been removed from your system"
   echo "Your backups are preserved in: $_JUVY_BACKUP_DIR"
-  echo "Restart your shell or source your rc file"
+  echo "Restart your shell to complete removal"
 }
 
 _juvy_validate_config_file() {

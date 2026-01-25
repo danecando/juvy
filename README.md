@@ -8,8 +8,9 @@ Works with bash and zsh on macOS and Linux. Automatically detects common dotfile
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
-source ~/.bashrc  # or source ~/.zshrc
 ```
+
+Then restart your shell or open a new terminal.
 
 ## Quick Start
 

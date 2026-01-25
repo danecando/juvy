@@ -351,20 +351,29 @@ _juvy_show_filter_debug() {
   local filter_file="$1"
   local line
 
-  echo "Filter file contents (for debugging):" >&2
-  echo "   ----------------------------------------" >&2
+  if [[ "${JUVY_DEBUG:-}" != "1" ]]; then
+    return 0
+  fi
+
+  _juvy_warn "Filter file contents (for debugging):"
+  _juvy_warn "   ----------------------------------------"
   while IFS= read -r line; do
-    echo "   $line" >&2
+    _juvy_warn "   $line"
   done < "$filter_file"
-  echo "   ----------------------------------------" >&2
+  _juvy_warn "   ----------------------------------------"
 }
 
 _juvy_rsync_backup_with_filters() {
   local source="$1"
   local dest="$2"
   local filter_file="$3"
+  local rsync_args=(-a --delete --delete-excluded --filter="merge $filter_file")
 
-  if ! _juvy_rsync_simple -av --delete --delete-excluded --filter="merge $filter_file" "$source" "$dest"; then
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
+    rsync_args=(-av --delete --delete-excluded --filter="merge $filter_file")
+  fi
+
+  if ! _juvy_rsync_simple "${rsync_args[@]}" "$source" "$dest"; then
     _juvy_show_filter_debug "$filter_file"
     return 1
   fi
@@ -380,7 +389,10 @@ _juvy_rsync_restore_with_filters() {
   # Build rsync arguments
   # Use --ignore-times to force copy even when backup files are older than current files
   # (This happens when user modifies a file after backup and wants to restore the original)
-  rsync_args=(-av --ignore-times --ignore-errors --filter="merge $filter_file")
+  rsync_args=(-a --ignore-times --ignore-errors --filter="merge $filter_file")
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
+    rsync_args=(-av --ignore-times --ignore-errors --filter="merge $filter_file")
+  fi
 
   # Add dry-run flag if requested
   if [[ "$dry_run" == "true" ]]; then
@@ -453,7 +465,7 @@ _juvy_git() {
 
 _juvy_update() {
   local temp_script="/tmp/juvy_update.sh"
-  local juvy_script="$HOME/.juvy/juvy.sh"
+  local juvy_script="$HOME/.juvy/juvy"
   local repo_url="https://raw.githubusercontent.com/danecando/juvy/main/juvy.sh"
   local latest_version update
 
@@ -488,9 +500,8 @@ _juvy_update() {
     return 0
   fi
 
-  if mv "$temp_script" "$juvy_script"; then
+  if mv "$temp_script" "$juvy_script" && chmod +x "$juvy_script"; then
     echo "Updated juvy to v$latest_version"
-    echo "Restart your shell or source your rc file"
   else
     echo "Failed to update juvy" >&2
     rm -f "$temp_script"
@@ -527,7 +538,7 @@ _juvy_nuke() {
 
   echo ""
   echo "juvy has been completely nuked from your system"
-  echo "Restart your shell or source your rc file"
+  echo "Restart your shell to complete removal"
 }
 
 _juvy_uninstall_internal() {
@@ -544,10 +555,10 @@ _juvy_uninstall_internal() {
   # Remove from shell rc files
   local rc_file
   for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    if [[ -f "$rc_file" ]] && grep -q "source.*\.juvy/juvy\.sh" "$rc_file"; then
+    if [[ -f "$rc_file" ]] && grep -q '\.juvy' "$rc_file"; then
       # Create a temporary file without the juvy lines
       {
-        grep -v "source.*\.juvy/juvy\.sh" "$rc_file" | grep -v "# juvy dotfile backup tool"
+        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool"
       } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
       echo "Removed juvy from $rc_file"
     fi
@@ -929,4 +940,3 @@ _juvy_remove() {
     done
   fi
 }
-
