@@ -97,7 +97,7 @@ _juvy_parse_quoted_value() {
 
 _juvy_validate_backup_file_exists() {
   if [[ ! -f "$_JUVY_BACKUP_FILE" ]]; then
-    echo "Backup file not found. Run 'juvy init' first." >&2
+    _juvy_out_error "Backup file not found. Run 'juvy init' first."
     return 1
   fi
   return 0
@@ -105,8 +105,8 @@ _juvy_validate_backup_file_exists() {
 
 _juvy_validate_backup_dir_exists() {
   if [[ ! -d "$_JUVY_BACKUP_DIR" ]]; then
-    echo "Backup directory not found: $_JUVY_BACKUP_DIR" >&2
-    echo "   Run 'juvy init' to set up backup directory" >&2
+    _juvy_out_error "Backup directory not found: $_JUVY_BACKUP_DIR"
+    _juvy_out_warn "   Run 'juvy init' to set up backup directory"
     return 1
   fi
   return 0
@@ -114,7 +114,7 @@ _juvy_validate_backup_dir_exists() {
 
 _juvy_validate_backup_dir_configured() {
   if [[ ! -d "$_JUVY_BACKUP_DIR" ]]; then
-    printf "juvy: Set JUVY_BACKUP_DIR value in %s\n" "$_JUVY_CONFIG_FILE" >&2
+    _juvy_out_error "juvy: Set JUVY_BACKUP_DIR value in $_JUVY_CONFIG_FILE"
     return 1
   fi
   return 0
@@ -140,41 +140,46 @@ _juvy_rsync_simple() {
   rsync_exit_code=$?
 
   if [[ $rsync_exit_code -eq 0 ]]; then
+    if [[ "$_JUVY_VERBOSE" == "true" && -n "$rsync_output" ]]; then
+      printf "%s\n" "$rsync_output"
+    fi
     return 0
   fi
 
   # Handle partial transfer as success if files were transferred (for restore operations)
   if [[ $rsync_exit_code -eq 23 ]] && [[ "$rsync_output" == *"sent "* ]]; then
+    if [[ "$_JUVY_VERBOSE" == "true" && -n "$rsync_output" ]]; then
+      printf "%s\n" "$rsync_output"
+    fi
     return 0
   fi
 
   # Show user-friendly error message
   case $rsync_exit_code in
     1)
-      echo "rsync syntax or usage error" >&2
+      _juvy_out_error "rsync syntax or usage error"
       ;;
     2)
-      echo "rsync protocol incompatibility" >&2
+      _juvy_out_error "rsync protocol incompatibility"
       ;;
     11)
-      echo "rsync file I/O error" >&2
+      _juvy_out_error "rsync file I/O error"
       ;;
     12)
-      echo "rsync protocol data stream error" >&2
+      _juvy_out_error "rsync protocol data stream error"
       ;;
     23)
-      echo "rsync partial transfer: some files could not be copied" >&2
+      _juvy_out_error "rsync partial transfer: some files could not be copied"
       ;;
     24)
-      echo "rsync source files vanished" >&2
+      _juvy_out_error "rsync source files vanished"
       ;;
     *)
-      echo "rsync failed with error code $rsync_exit_code" >&2
+      _juvy_out_error "rsync failed with error code $rsync_exit_code"
       ;;
   esac
 
-  echo "See $_JUVY_LOG_FILE for details" >&2
+  _juvy_out_warn "See $_JUVY_LOG_FILE for details"
   _juvy_log_error "rsync failed (exit code $rsync_exit_code): $rsync_output"
   return $rsync_exit_code
 }
-
