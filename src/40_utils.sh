@@ -260,23 +260,21 @@ _juvy_process_backup_entries() {
   local entry source_path
   local home_count=0 system_count=0
 
-  echo "Processing backup entries..."
-
   _juvy_collect_backup_entries
 
-  echo "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
+  _juvy_out_info "Processing ${#_JUVY_INCLUDE_PATHS[@]} paths"
 
   for entry in ${_JUVY_INCLUDE_PATHS[@]+"${_JUVY_INCLUDE_PATHS[@]}"}; do
     source_path="$(_juvy_entry_to_source_path "$entry")"
 
     if [[ "$entry" == */ ]]; then
       if [[ ! -d "$source_path" ]]; then
-        echo "Directory not found: $source_path" >&2
+        _juvy_out_warn "Directory not found: $source_path"
         continue
       fi
     else
       if [[ ! -f "$source_path" ]]; then
-        echo "File not found: $source_path" >&2
+        _juvy_out_warn "File not found: $source_path"
         continue
       fi
     fi
@@ -289,25 +287,25 @@ _juvy_process_backup_entries() {
   done
 
   if [[ ${#home_paths[@]} -gt 0 ]]; then
-    echo "Backing up ${#home_paths[@]} home paths..."
+    _juvy_out_info "Backing up ${#home_paths[@]} home paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "$HOME" home_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      echo "Failed to build filter file for home paths" >&2
+      _juvy_out_error "Failed to build filter file for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR$HOME/" > /dev/null 2>&1; then
-      echo "Failed to create backup directory for home paths" >&2
+      _juvy_out_error "Failed to create backup directory for home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "$HOME/" "$_JUVY_BACKUP_DIR$HOME/" "$temp_filter_file"; then
-      echo "Failed to backup home paths" >&2
+      _juvy_out_error "Failed to backup home paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -317,25 +315,25 @@ _juvy_process_backup_entries() {
   fi
 
   if [[ ${#system_paths[@]} -gt 0 ]]; then
-    echo "Backing up ${#system_paths[@]} system paths..."
+    _juvy_out_info "Backing up ${#system_paths[@]} system paths..."
 
     local temp_filter_file
     temp_filter_file="$(mktemp)"
 
     if ! _juvy_build_rsync_filter_file "/" system_paths _JUVY_EXCLUDE_PATTERNS "$temp_filter_file"; then
-      echo "Failed to build filter file for system paths" >&2
+      _juvy_out_error "Failed to build filter file for system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! mkdir -p "$_JUVY_BACKUP_DIR" > /dev/null 2>&1; then
-      echo "Failed to create backup directory" >&2
+      _juvy_out_error "Failed to create backup directory"
       rm -f "$temp_filter_file"
       return 1
     fi
 
     if ! _juvy_rsync_backup_with_filters "/" "$_JUVY_BACKUP_DIR" "$temp_filter_file"; then
-      echo "Failed to backup system paths" >&2
+      _juvy_out_error "Failed to backup system paths"
       rm -f "$temp_filter_file"
       return 1
     fi
@@ -344,7 +342,7 @@ _juvy_process_backup_entries() {
     system_count=${#system_paths[@]}
   fi
 
-  echo "Processed $home_count home and $system_count system paths"
+  _juvy_out_success "Processed $home_count home and $system_count system paths"
   return 0
 }
 
@@ -353,20 +351,29 @@ _juvy_show_filter_debug() {
   local filter_file="$1"
   local line
 
-  echo "Filter file contents (for debugging):" >&2
-  echo "   ----------------------------------------" >&2
+  if [[ "$_JUVY_DEBUG" != "true" ]]; then
+    return 0
+  fi
+
+  _juvy_out_warn "Filter file contents (for debugging):"
+  _juvy_out_warn "   ----------------------------------------"
   while IFS= read -r line; do
-    echo "   $line" >&2
+    _juvy_out_warn "   $line"
   done < "$filter_file"
-  echo "   ----------------------------------------" >&2
+  _juvy_out_warn "   ----------------------------------------"
 }
 
 _juvy_rsync_backup_with_filters() {
   local source="$1"
   local dest="$2"
   local filter_file="$3"
+  local rsync_args=(-a --delete --delete-excluded --filter="merge $filter_file")
 
-  if ! _juvy_rsync_simple -av --delete --delete-excluded --filter="merge $filter_file" "$source" "$dest"; then
+  if [[ "$_JUVY_VERBOSE" == "true" ]]; then
+    rsync_args=(-av --delete --delete-excluded --filter="merge $filter_file")
+  fi
+
+  if ! _juvy_rsync_simple "${rsync_args[@]}" "$source" "$dest"; then
     _juvy_show_filter_debug "$filter_file"
     return 1
   fi
@@ -382,7 +389,10 @@ _juvy_rsync_restore_with_filters() {
   # Build rsync arguments
   # Use --ignore-times to force copy even when backup files are older than current files
   # (This happens when user modifies a file after backup and wants to restore the original)
-  rsync_args=(-av --ignore-times --ignore-errors --filter="merge $filter_file")
+  rsync_args=(-a --ignore-times --ignore-errors --filter="merge $filter_file")
+  if [[ "$_JUVY_VERBOSE" == "true" ]]; then
+    rsync_args=(-av --ignore-times --ignore-errors --filter="merge $filter_file")
+  fi
 
   # Add dry-run flag if requested
   if [[ "$dry_run" == "true" ]]; then
@@ -904,4 +914,3 @@ _juvy_remove() {
     done
   fi
 }
-

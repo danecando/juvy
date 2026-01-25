@@ -25,6 +25,15 @@ _JUVY_REMOTE_URL=""
 _JUVY_REMOTE_PUSH=""
 _JUVY_REMOTE_NAME=""
 _JUVY_PLATFORM=""
+_JUVY_USE_COLOR="false"
+_JUVY_VERBOSE="false"
+_JUVY_DEBUG="false"
+
+_JUVY_COLOR_INFO=""
+_JUVY_COLOR_WARN=""
+_JUVY_COLOR_ERROR=""
+_JUVY_COLOR_SUCCESS=""
+_JUVY_COLOR_RESET=""
 
 # Global arrays for backup entry collection (Bash 3.2 compatible)
 _JUVY_INCLUDE_PATHS=()
@@ -80,5 +89,69 @@ _juvy_init_paths() {
   _JUVY_CONFIG_FILE="$_JUVY_CONFIG_DIR/config"
   _JUVY_BACKUP_FILE="$_JUVY_CONFIG_DIR/backup"
   _JUVY_LOG_FILE="$_JUVY_CONFIG_DIR/log"
+
+  _juvy_init_output
 }
 
+_juvy_is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_juvy_init_output() {
+  if _juvy_is_truthy "${JUVY_VERBOSE:-}"; then
+    _JUVY_VERBOSE="true"
+  else
+    _JUVY_VERBOSE="false"
+  fi
+
+  if _juvy_is_truthy "${JUVY_DEBUG:-}"; then
+    _JUVY_DEBUG="true"
+  else
+    _JUVY_DEBUG="false"
+  fi
+
+  if [[ -n "${JUVY_COLOR:-}" ]]; then
+    if _juvy_is_truthy "${JUVY_COLOR:-}"; then
+      _JUVY_USE_COLOR="true"
+    else
+      _JUVY_USE_COLOR="false"
+    fi
+  elif [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
+    _JUVY_USE_COLOR="true"
+  else
+    _JUVY_USE_COLOR="false"
+  fi
+
+  if [[ "$_JUVY_USE_COLOR" == "true" ]]; then
+    _JUVY_COLOR_INFO="\033[0;36m"
+    _JUVY_COLOR_WARN="\033[0;33m"
+    _JUVY_COLOR_ERROR="\033[0;31m"
+    _JUVY_COLOR_SUCCESS="\033[0;32m"
+    _JUVY_COLOR_RESET="\033[0m"
+  else
+    _JUVY_COLOR_INFO=""
+    _JUVY_COLOR_WARN=""
+    _JUVY_COLOR_ERROR=""
+    _JUVY_COLOR_SUCCESS=""
+    _JUVY_COLOR_RESET=""
+  fi
+}
+
+_juvy_out_info() {
+  printf "%b\n" "${_JUVY_COLOR_INFO}[INFO]${_JUVY_COLOR_RESET} $*"
+}
+
+_juvy_out_warn() {
+  printf "%b\n" "${_JUVY_COLOR_WARN}[WARN]${_JUVY_COLOR_RESET} $*" >&2
+}
+
+_juvy_out_error() {
+  printf "%b\n" "${_JUVY_COLOR_ERROR}[ERROR]${_JUVY_COLOR_RESET} $*" >&2
+}
+
+_juvy_out_success() {
+  printf "%b\n" "${_JUVY_COLOR_SUCCESS}[OK]${_JUVY_COLOR_RESET} $*"
+}
