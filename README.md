@@ -1,26 +1,22 @@
 # juvy
 
-Simple dotfile backup utility using rsync + git for versioned backups.
+Track your dotfiles and config without the hassle. 
 
-Works with bash and zsh on macOS and Linux. Automatically detects common dotfiles during setup. Default backup directory syncs via iCloud on macOS.
+`juvy` is a simple cross-platform backup utility written in bash. It uses rsync to automatically backup your files to a directory / git repo in the background. No symlinks or managing your files through another utility. Configure the files that you want to track and `juvy` will handle the rest. 
 
 ## Quick Start
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danecando/juvy/main/install.sh | bash
-```
 
-Restart your shell, then:
-
-```bash
 juvy init
 ```
 
-Done. Backups run automatically every time you open a terminal.
+`juvy init` will automatically detect common configuration files to bootstrap your configuration. You can easily add new files to track at any time with `juvy add`.
 
 ## How It Works
 
-Every shell startup triggers `juvy backup` in the background. Rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
+Every shell startup triggers `juvy backup` in the background. rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
 
 To disable automatic backups, remove the `juvy backup` line from your shell rc file (`~/.zshrc` or `~/.bashrc`).
 
@@ -71,6 +67,28 @@ juvy git diff HEAD~1 HEAD   # Compare last two backups
 | `~/.config/juvy/config` | Settings (backup dir, remote URL) |
 | `~/.config/juvy/backup` | List of files/directories to backup |
 | `~/.config/juvy/log` | Operation history |
+
+### Config Options
+
+Settings in `~/.config/juvy/config`:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `JUVY_BACKUP_DIR` | Path to backup directory | See "Default Backup Directory" below  |
+| `JUVY_REMOTE_URL` | Git remote URL for syncing | (none) |
+| `JUVY_REMOTE_PUSH` | Auto-push after backup when remote is configured | `true` |
+| `JUVY_REMOTE_NAME` | Git remote name | `origin` |
+
+Example config:
+
+```bash
+JUVY_BACKUP_DIR='/Users/{username}/Library/Mobile Documents/com~apple~CloudDocs/juvy/{hostname}'
+JUVY_REMOTE_URL='git@github.com:username/dotfiles.git'
+JUVY_REMOTE_PUSH='true'
+JUVY_REMOTE_NAME='origin'
+```
+
+When `JUVY_REMOTE_PUSH` is enabled, backups automatically push to the remote repository. Use `juvy status` to see if any commits are pending push.
 
 ### Backup File Format
 
