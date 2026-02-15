@@ -213,3 +213,32 @@ teardown() {
   [[ "$output" == *"Remote diverged"* ]]
   [[ "$output" == *"juvy remote sync"* ]]
 }
+
+@test "remote status does not report reachable when remote is unreachable and no local commits exist" {
+  local missing_remote="$TEST_ROOT/missing-remote.git"
+
+  # Configure a git remote URL that cannot be reached and ensure there are no commits.
+  git -C "$BACKUP_DIR" remote add origin "$missing_remote"
+  printf "JUVY_REMOTE_URL='%s'\n" "$missing_remote" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  run juvy remote
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Remote is not reachable"* ]]
+  [[ "$output" != *"Remote is reachable"* ]]
+}
+
+@test "status reports misconfigured remote when config URL exists but git remote is missing" {
+  # Configure remote in juvy config only; do not add the git remote in backup repo.
+  printf "JUVY_REMOTE_URL='%s'\n" "$TEST_ROOT/missing-config-only.git" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  run juvy status
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Remote"* ]]
+  [[ "$output" == *"not found"* || "$output" == *"not configured"* || "$output" == *"missing"* ]]
+}

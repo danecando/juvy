@@ -554,6 +554,9 @@ _juvy_status() {
       unreachable)
         remote_status="Remote not reachable (check network/auth)."
         ;;
+      no_remote)
+        remote_status="Remote misconfigured: git remote not found in backup repo. Run 'juvy remote <url>' to reconfigure."
+        ;;
     esac
   fi
 

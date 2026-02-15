@@ -202,6 +202,10 @@ _juvy_remote_status() {
       unreachable)
         echo "Remote is not reachable"
         ;;
+      no_remote)
+        echo "Remote is misconfigured: git remote '$remote_name' not found in backup repo"
+        echo "Run 'juvy remote <url>' to reconfigure it"
+        ;;
       *)
         echo "Remote status unavailable"
         ;;
@@ -296,11 +300,6 @@ _juvy_remote_get_sync_state() {
     return 0
   fi
 
-  if ! _juvy_git rev-parse --verify HEAD >/dev/null 2>&1; then
-    echo "no_local_commits|0|0"
-    return 0
-  fi
-
   if [[ "$do_fetch" == "true" ]]; then
     if ! _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
       echo "unreachable|0|0"
@@ -310,6 +309,11 @@ _juvy_remote_get_sync_state() {
       echo "unreachable|0|0"
       return 0
     fi
+  fi
+
+  if ! _juvy_git rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo "no_local_commits|0|0"
+    return 0
   fi
 
   branch="$(_juvy_remote_select_branch "$remote_name")"
