@@ -139,6 +139,22 @@ EOF
   assert_file_not_contains "$HOME/.zshrc" "# <<< juvy auto backup <<<"
 }
 
+@test "uninstall does not truncate rc file when managed block end marker is missing" {
+  cat > "$HOME/.zshrc" << 'EOF'
+export FOO=bar
+# >>> juvy auto backup >>>
+export PATH="$HOME/.juvy:$PATH"
+juvy backup >/dev/null 2>&1 &
+export BAR=baz
+EOF
+
+  _juvy_uninstall_internal
+
+  assert_file_contains "$HOME/.zshrc" "export FOO=bar"
+  assert_file_contains "$HOME/.zshrc" "export BAR=baz"
+  assert_file_contains "$HOME/.zshrc" "# >>> juvy auto backup >>>"
+}
+
 @test "doctor validates exclude patterns" {
   create_test_dir "~/.config/app/"
   create_test_file "~/.config/app/config.txt" "config"

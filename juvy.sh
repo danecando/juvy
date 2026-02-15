@@ -1950,6 +1950,8 @@ _juvy_remove_managed_block_from_file() {
   local temp_file
 
   [[ -f "$file_path" ]] || return 0
+  grep -Fq "$start_marker" "$file_path" || return 1
+  grep -Fq "$end_marker" "$file_path" || return 1
 
   temp_file="$file_path.tmp"
   awk -v start="$start_marker" -v end="$end_marker" '
@@ -1973,7 +1975,7 @@ _juvy_write_shell_integration_block() {
   cat >> "$rc_file" << EOF
 $_JUVY_SHELL_INTEGRATION_START
 export PATH="\$HOME/.juvy:\$PATH"
-if [[ "\${JUVY_AUTO_BACKUP:-1}" != "0" ]] && [[ -o interactive ]] && command -v juvy >/dev/null 2>&1; then
+if [[ "\${JUVY_AUTO_BACKUP:-1}" != "0" ]] && [[ "\$-" == *i* ]] && command -v juvy >/dev/null 2>&1; then
   if [[ -z "\${JUVY_AUTO_BACKUP_STARTED:-}" ]]; then
     export JUVY_AUTO_BACKUP_STARTED=1
     juvy backup >/dev/null 2>&1 &
