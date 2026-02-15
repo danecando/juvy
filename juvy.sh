@@ -1976,23 +1976,7 @@ export PATH="\$HOME/.juvy:\$PATH"
 if [[ "\${JUVY_AUTO_BACKUP:-1}" != "0" ]] && [[ -o interactive ]] && command -v juvy >/dev/null 2>&1; then
   if [[ -z "\${JUVY_AUTO_BACKUP_STARTED:-}" ]]; then
     export JUVY_AUTO_BACKUP_STARTED=1
-    _juvy_auto_backup_interval="\${JUVY_AUTO_BACKUP_INTERVAL:-300}"
-    _juvy_auto_backup_stamp="\${XDG_STATE_HOME:-\$HOME/.local/state}/juvy/auto-backup.last"
-    if [[ "\$_juvy_auto_backup_interval" =~ ^[0-9]+$ ]] && (( _juvy_auto_backup_interval > 0 )); then
-      _juvy_auto_backup_now="\$(date +%s 2>/dev/null || echo 0)"
-      _juvy_auto_backup_prev=0
-      if [[ -f "\$_juvy_auto_backup_stamp" ]]; then
-        _juvy_auto_backup_prev="\$(cat "\$_juvy_auto_backup_stamp" 2>/dev/null || echo 0)"
-      fi
-      if (( _juvy_auto_backup_now - _juvy_auto_backup_prev >= _juvy_auto_backup_interval )); then
-        mkdir -p "\$(dirname "\$_juvy_auto_backup_stamp")" >/dev/null 2>&1
-        echo "\$_juvy_auto_backup_now" > "\$_juvy_auto_backup_stamp" 2>/dev/null
-        juvy backup >/dev/null 2>&1 &
-      fi
-    else
-      juvy backup >/dev/null 2>&1 &
-    fi
-    unset _juvy_auto_backup_interval _juvy_auto_backup_stamp _juvy_auto_backup_now _juvy_auto_backup_prev
+    juvy backup >/dev/null 2>&1 &
   fi
 fi
 $_JUVY_SHELL_INTEGRATION_END
