@@ -35,7 +35,7 @@ teardown() {
   [[ "$remote_check" != *"origin"* ]]
 }
 
-@test "remote push syncs to remote" {
+@test "remote syncs to remote" {
   # Create bare repo and set as remote via git directly
   local remote_repo="$TEST_ROOT/remote.git"
   git init --bare "$remote_repo" >/dev/null 2>&1
@@ -47,7 +47,7 @@ teardown() {
   juvy backup
 
   # Set upstream and push
-  run juvy remote push
+  run juvy remote sync
 
   # Check if push succeeded or if there's a reasonable error
   # (push may fail in some environments due to git config)
@@ -89,4 +89,156 @@ teardown() {
 
   # Check that it got past URL validation
   [[ "$output" != *"Invalid URL"* ]]
+}
+
+@test "remote push command is removed" {
+  run juvy remote push
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"removed"* ]]
+  [[ "$output" == *"juvy remote sync"* ]]
+}
+
+@test "remote sync uses remote default branch when branch is not main" {
+  local remote_repo="$TEST_ROOT/remote.git"
+  local seed_repo="$TEST_ROOT/seed"
+
+  git init --bare "$remote_repo" >/dev/null 2>&1
+  git clone "$remote_repo" "$seed_repo" >/dev/null 2>&1
+  git -C "$seed_repo" config user.name "Seed User"
+  git -C "$seed_repo" config user.email "seed@example.com"
+  git -C "$seed_repo" checkout -b master >/dev/null 2>&1
+  echo "seed" > "$seed_repo/seed.txt"
+  git -C "$seed_repo" add seed.txt
+  git -C "$seed_repo" commit -m "Seed master" >/dev/null 2>&1
+  git -C "$seed_repo" push -u origin master >/dev/null 2>&1
+  git --git-dir "$remote_repo" symbolic-ref HEAD refs/heads/master
+
+  git -C "$BACKUP_DIR" remote add origin "$remote_repo"
+  printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  create_test_file "~/.zshrc" "machine-a-master-branch"
+  add_to_backup_list "~/.zshrc"
+  run juvy backup
+  [ "$status" -eq 0 ]
+
+  run juvy remote sync
+  [ "$status" -eq 0 ]
+
+  run git --git-dir "$remote_repo" rev-list --count master
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 2 ]
+}
+
+@test "remote sync reconciles remote updates from another machine" {
+  local remote_repo="$TEST_ROOT/remote.git"
+  local machine_b_repo="$TEST_ROOT/machine-b"
+  local tracked_file="$BACKUP_DIR$HOME/.zshrc"
+
+  git init --bare "$remote_repo" >/dev/null 2>&1
+  git -C "$BACKUP_DIR" remote add origin "$remote_repo"
+  printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='true'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  create_test_file "~/.zshrc" "machine-a-v1"
+  add_to_backup_list "~/.zshrc"
+  run juvy backup
+  [ "$status" -eq 0 ]
+  run juvy remote sync
+  [ "$status" -eq 0 ]
+
+  git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
+  git -C "$machine_b_repo" config user.name "Machine B"
+  git -C "$machine_b_repo" config user.email "machine-b@example.com"
+  git -C "$machine_b_repo" checkout -B main origin/main >/dev/null 2>&1
+  echo "from-b" > "$machine_b_repo/machine-b.txt"
+  git -C "$machine_b_repo" add machine-b.txt
+  git -C "$machine_b_repo" commit -m "Machine B update" >/dev/null 2>&1
+  git -C "$machine_b_repo" push origin HEAD:main >/dev/null 2>&1
+
+  create_test_file "~/.zshrc" "machine-a-v2-updated-content"
+  run juvy backup
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"sync failed"* ]]
+
+  git -C "$BACKUP_DIR" fetch origin >/dev/null 2>&1
+  run git -C "$BACKUP_DIR" rev-list --count "origin/main..HEAD"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 0 ]
+  run git -C "$BACKUP_DIR" rev-list --count "HEAD..origin/main"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 0 ]
+
+  run git --git-dir "$remote_repo" rev-list --count main
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 3 ]
+  [ -f "$tracked_file" ]
+}
+
+@test "status reports actionable guidance when remote has diverged" {
+  local remote_repo="$TEST_ROOT/remote.git"
+  local machine_b_repo="$TEST_ROOT/machine-b"
+
+  git init --bare "$remote_repo" >/dev/null 2>&1
+  git -C "$BACKUP_DIR" remote add origin "$remote_repo"
+  printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  create_test_file "~/.zshrc" "base"
+  add_to_backup_list "~/.zshrc"
+  run juvy backup
+  [ "$status" -eq 0 ]
+  run juvy remote sync
+  [ "$status" -eq 0 ]
+
+  git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
+  git -C "$machine_b_repo" config user.name "Machine B"
+  git -C "$machine_b_repo" config user.email "machine-b@example.com"
+  git -C "$machine_b_repo" checkout -B main origin/main >/dev/null 2>&1
+  echo "from-b" > "$machine_b_repo/machine-b.txt"
+  git -C "$machine_b_repo" add machine-b.txt
+  git -C "$machine_b_repo" commit -m "Machine B update" >/dev/null 2>&1
+  git -C "$machine_b_repo" push origin HEAD:main >/dev/null 2>&1
+
+  create_test_file "~/.zshrc" "from-a"
+  run juvy backup
+  [ "$status" -eq 0 ]
+
+  run juvy status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Remote diverged"* ]]
+  [[ "$output" == *"juvy remote sync"* ]]
+}
+
+@test "remote status does not report reachable when remote is unreachable and no local commits exist" {
+  local missing_remote="$TEST_ROOT/missing-remote.git"
+
+  # Configure a git remote URL that cannot be reached and ensure there are no commits.
+  git -C "$BACKUP_DIR" remote add origin "$missing_remote"
+  printf "JUVY_REMOTE_URL='%s'\n" "$missing_remote" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  run juvy remote
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Remote is not reachable"* ]]
+  [[ "$output" != *"Remote is reachable"* ]]
+}
+
+@test "status reports misconfigured remote when config URL exists but git remote is missing" {
+  # Configure remote in juvy config only; do not add the git remote in backup repo.
+  printf "JUVY_REMOTE_URL='%s'\n" "$TEST_ROOT/missing-config-only.git" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  run juvy status
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Remote"* ]]
+  [[ "$output" == *"not found"* || "$output" == *"not configured"* || "$output" == *"missing"* ]]
 }

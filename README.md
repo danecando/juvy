@@ -56,7 +56,7 @@ juvy git diff HEAD~1 HEAD   # Compare last two backups
 - `juvy remote <url>` - Set remote URL and enable auto-sync
 - `juvy remote` - Show current remote status
 - `juvy remote off` - Disable remote
-- `juvy remote push` - Manual push
+- `juvy remote sync` - Fetch, auto-rebase, and push
 
 ### Maintenance
 
@@ -83,7 +83,7 @@ Settings in `~/.config/juvy/config`:
 |--------|-------------|---------|
 | `JUVY_BACKUP_DIR` | Path to backup directory | See "Default Backup Directory" below  |
 | `JUVY_REMOTE_URL` | Git remote URL for syncing | (none) |
-| `JUVY_REMOTE_PUSH` | Auto-push after backup when remote is configured | `true` |
+| `JUVY_REMOTE_AUTO_SYNC` | Auto-sync after backup when remote is configured | `true` |
 | `JUVY_REMOTE_NAME` | Git remote name | `origin` |
 
 Example config:
@@ -91,11 +91,14 @@ Example config:
 ```bash
 JUVY_BACKUP_DIR='/Users/<username>/Library/Mobile Documents/com~apple~CloudDocs/juvy/<hostname>'
 JUVY_REMOTE_URL='git@github.com:username/dotfiles.git'
-JUVY_REMOTE_PUSH='true'
+JUVY_REMOTE_AUTO_SYNC='true'
 JUVY_REMOTE_NAME='origin'
 ```
 
-When `JUVY_REMOTE_PUSH` is enabled, backups automatically push to the remote repository. Use `juvy status` to see if any commits are pending push.
+When `JUVY_REMOTE_AUTO_SYNC` is enabled, backups automatically fetch, reconcile, and push to the remote repository. If another machine has pushed newer commits, juvy rebases local commits before pushing. Use `juvy status`, `juvy remote`, or `juvy doctor` to detect divergence and get guidance.
+
+`juvy remote push` was removed in `v2.0.0`. Use `juvy remote sync`.
+`JUVY_REMOTE_PUSH` was removed in `v2.0.0`. Use `JUVY_REMOTE_AUTO_SYNC`.
 
 ### Backup File Format
 

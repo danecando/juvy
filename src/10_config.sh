@@ -6,7 +6,7 @@ _juvy_load_config() {
 
   _JUVY_BACKUP_DIR="$(_juvy_default_backup_dir)"
   _JUVY_REMOTE_URL=""
-  _JUVY_REMOTE_PUSH=""
+  _JUVY_REMOTE_AUTO_SYNC=""
   _JUVY_REMOTE_NAME=""
 
   if [[ -f "$_JUVY_CONFIG_FILE" ]]; then
@@ -39,8 +39,8 @@ _juvy_load_config() {
         JUVY_REMOTE_NAME)
           _JUVY_REMOTE_NAME="$value"
           ;;
-        JUVY_REMOTE_PUSH)
-          _JUVY_REMOTE_PUSH="$value"
+        JUVY_REMOTE_AUTO_SYNC)
+          _JUVY_REMOTE_AUTO_SYNC="$value"
           ;;
       esac
     done < "$_JUVY_CONFIG_FILE"

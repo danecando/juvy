@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [2.0.0] - 2026-02-15
+
+### Added
+- Reliable multi-machine remote sync workflow for `juvy backup` and `juvy remote sync`.
+- Automatic remote reconciliation (`fetch` + `rebase`) before push in common divergence scenarios.
+- Remote divergence diagnostics in `juvy status`, `juvy remote`, and `juvy doctor` with actionable guidance.
+- Bats tests covering multi-machine sync reconciliation and divergence reporting.
+- Automatic remote branch selection for sync operations:
+  - local tracking branch when available
+  - remote default branch (`origin/HEAD`) otherwise
+  - fallback to `main`
+
+### Changed
+- `juvy remote sync` is now the manual sync command (fetch/rebase/push).
+- Updated help text and README remote-sync docs to reflect reconciliation behavior.
+
+### Removed
+- `juvy remote push` command. Use `juvy remote sync`.
+- `JUVY_REMOTE_PUSH` config key. Use `JUVY_REMOTE_AUTO_SYNC`.
+
 ## [1.2.0] - 2026-02-15
 
 ### Added
@@ -21,4 +41,3 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Fixed
 - Fixed Docker test runner empty argument handling with `set -u`.
 - Fixed mismatch between restore undo guidance and supported CLI behavior.
-

@@ -22,7 +22,7 @@ _JUVY_BACKUP_FILE=""
 _JUVY_LOG_FILE=""
 _JUVY_BACKUP_DIR=""
 _JUVY_REMOTE_URL=""
-_JUVY_REMOTE_PUSH=""
+_JUVY_REMOTE_AUTO_SYNC=""
 _JUVY_REMOTE_NAME=""
 _JUVY_PLATFORM=""
 
@@ -67,7 +67,7 @@ _juvy_init_paths() {
   _juvy_detect_platform
 
   # Version constant
-  _JUVY_VERSION="1.2.0"
+  _JUVY_VERSION="2.0.0"
 
   # Config directory - respect environment override for testing
   if [[ -n "${JUVY_CONFIG_DIR:-}" ]]; then

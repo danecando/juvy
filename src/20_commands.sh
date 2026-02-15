@@ -100,7 +100,7 @@ _juvy_help() {
   echo "              'remote' shows current status"
   echo "              'remote <url>' sets/changes remote"
   echo "              'remote off' removes remote"
-  echo "              'remote push' manually pushes to remote"
+  echo "              'remote sync' fetches/rebases then pushes"
   echo "  update      Update juvy to the latest version"
   echo "  version     Show version information"
   echo "  uninstall   Remove juvy from system (preserves backups)"
@@ -204,7 +204,7 @@ _juvy_prompt_remote_setup() {
   local force_reinit="$1"
   local remote_url choice
   local current_remote="$_JUVY_REMOTE_URL"
-  local current_push="$_JUVY_REMOTE_PUSH"
+  local current_auto_sync="$_JUVY_REMOTE_AUTO_SYNC"
 
   echo ""
   echo "Git Remote Setup (Optional)"
@@ -218,7 +218,7 @@ _juvy_prompt_remote_setup() {
 
   if [[ "$force_reinit" == "true" && -n "$current_remote" ]]; then
     echo "Current remote: $current_remote"
-    echo "Current auto-push: ${current_push:-false}"
+    echo "Current auto-sync: ${current_auto_sync:-false}"
     echo ""
     echo "Enter new git remote URL (or press Enter to keep current):"
   else
@@ -290,13 +290,13 @@ _juvy_prompt_remote_setup() {
   if [[ "$test_success" == "true" ]]; then
     # Update config file
     _juvy_update_config "JUVY_REMOTE_URL" "$remote_url"
-    _juvy_update_config "JUVY_REMOTE_PUSH" "true"
+    _juvy_update_config "JUVY_REMOTE_AUTO_SYNC" "true"
     _juvy_update_config "JUVY_REMOTE_NAME" "$remote_name"
 
     echo "Remote setup completed successfully"
     echo ""
-    echo "Auto-push is enabled. Future backups will be pushed automatically."
-    echo "To disable auto-push: Set JUVY_REMOTE_PUSH=false in $_JUVY_CONFIG_FILE"
+    echo "Auto-sync is enabled. Future backups will be synced automatically."
+    echo "To disable auto-sync: Set JUVY_REMOTE_AUTO_SYNC=false in $_JUVY_CONFIG_FILE"
   fi
 }
 
@@ -585,7 +585,7 @@ _juvy_validate_config_file() {
           issues+=("Line $line_num: Invalid git URL format: $test_url")
         fi
         ;;
-      JUVY_REMOTE_PUSH)
+      JUVY_REMOTE_AUTO_SYNC)
         # Validate boolean
         local test_bool
         if ! test_bool="$(_juvy_parse_quoted_value "$value")"; then

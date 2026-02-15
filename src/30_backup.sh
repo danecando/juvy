@@ -43,15 +43,15 @@ _juvy_backup_internal() {
     fi
     _juvy_info "Changes committed to git"
 
-    # Auto-push if remote is configured and enabled
+    # Auto-sync if remote is configured and enabled
     local push_status=""
-    if [[ "$_JUVY_REMOTE_PUSH" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
-      if _juvy_remote_push_auto; then
-        _juvy_info "Changes pushed to remote"
-        push_status=" (pushed to remote)"
+    if [[ "$_JUVY_REMOTE_AUTO_SYNC" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
+      if _juvy_remote_sync_auto; then
+        _juvy_info "Changes synced to remote"
+        push_status=" (synced to remote)"
       else
-        _juvy_warn "Failed to push to remote (run 'juvy remote push' manually)"
-        push_status=" (push failed)"
+        _juvy_warn "Failed to sync to remote (run 'juvy remote sync' manually)"
+        push_status=" (sync failed)"
       fi
     fi
 
@@ -278,6 +278,34 @@ _juvy_doctor() {
 
         if _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
           _juvy_result "Remote reachable"
+
+          local remote_state_data remote_state remote_ahead remote_behind
+          remote_state_data="$(_juvy_remote_get_sync_state "true")"
+          remote_state="${remote_state_data%%|*}"
+          remote_state_data="${remote_state_data#*|}"
+          remote_ahead="${remote_state_data%%|*}"
+          remote_behind="${remote_state_data#*|}"
+
+          case "$remote_state" in
+            ahead)
+              _juvy_warn "$remote_ahead commit(s) pending sync (run 'juvy remote sync')"
+              (( ++warnings ))
+              ;;
+            behind)
+              _juvy_warn "Local backup is behind remote by $remote_behind commit(s)"
+              _juvy_warn "Run 'juvy remote sync' to reconcile automatically"
+              (( ++warnings ))
+              ;;
+            diverged)
+              _juvy_warn "Local and remote have diverged (ahead $remote_ahead, behind $remote_behind)"
+              _juvy_warn "Run 'juvy remote sync' to reconcile automatically"
+              (( ++warnings ))
+              ;;
+            no_remote_branch)
+              _juvy_warn "Remote branch does not exist yet (run 'juvy remote sync')"
+              (( ++warnings ))
+              ;;
+          esac
         else
           _juvy_warn "Remote not reachable (check network/auth)"
           (( ++warnings ))

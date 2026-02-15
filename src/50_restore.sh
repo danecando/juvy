@@ -526,23 +526,38 @@ _juvy_status() {
 
   # Check remote sync status if configured
   local remote_status=""
+  local state_data state ahead behind
   if [[ -n "$_JUVY_REMOTE_URL" ]]; then
-    local remote_name="${_JUVY_REMOTE_NAME:-origin}"
-    local unpushed_count=0
+    state_data="$(_juvy_remote_get_sync_state "true")"
+    state="${state_data%%|*}"
+    state_data="${state_data#*|}"
+    ahead="${state_data%%|*}"
+    behind="${state_data#*|}"
 
-    if _juvy_git rev-parse "$remote_name/main" >/dev/null 2>&1; then
-      unpushed_count="$(_juvy_git rev-list --count "$remote_name/main..HEAD" 2>/dev/null || echo 0)"
-    else
-      unpushed_count="$(_juvy_git rev-list --count HEAD 2>/dev/null || echo 0)"
-    fi
-
-    if [[ "$unpushed_count" -gt 0 ]]; then
-      if [[ "$unpushed_count" -eq 1 ]]; then
-        remote_status="1 commit not pushed to remote"
-      else
-        remote_status="$unpushed_count commits not pushed to remote"
-      fi
-    fi
+    case "$state" in
+      ahead)
+        if [[ "$ahead" -eq 1 ]]; then
+          remote_status="1 commit not synced to remote"
+        else
+          remote_status="$ahead commits not synced to remote"
+        fi
+        ;;
+      behind)
+        remote_status="Remote has $behind newer commit(s). Run 'juvy remote sync' to sync."
+        ;;
+      diverged)
+        remote_status="Remote diverged (ahead $ahead, behind $behind). Run 'juvy remote sync' to auto-rebase."
+        ;;
+      no_remote_branch)
+        remote_status="Remote branch does not exist yet. Run 'juvy remote sync' to create it."
+        ;;
+      unreachable)
+        remote_status="Remote not reachable (check network/auth)."
+        ;;
+      no_remote)
+        remote_status="Remote misconfigured: git remote not found in backup repo. Run 'juvy remote <url>' to reconfigure."
+        ;;
+    esac
   fi
 
   # Display results
