@@ -99,7 +99,7 @@ _juvy_help() {
   echo "              'remote' shows current status"
   echo "              'remote <url>' sets/changes remote"
   echo "              'remote off' removes remote"
-  echo "              'remote push' manually pushes to remote"
+  echo "              'remote push' fetches/rebases then pushes"
   echo "  update      Update juvy to the latest version"
   echo "  version     Show version information"
   echo "  uninstall   Remove juvy from system (preserves backups)"
@@ -711,4 +711,3 @@ _juvy_validate_backup_file() {
 
   return 0
 }
-

@@ -51,7 +51,7 @@ juvy git diff HEAD~1 HEAD   # Compare last two backups
 - `juvy remote <url>` - Set remote URL and enable auto-sync
 - `juvy remote` - Show current remote status
 - `juvy remote off` - Disable remote
-- `juvy remote push` - Manual push
+- `juvy remote push` - Fetch, auto-rebase, and push
 
 ### Maintenance
 
@@ -90,7 +90,7 @@ JUVY_REMOTE_PUSH='true'
 JUVY_REMOTE_NAME='origin'
 ```
 
-When `JUVY_REMOTE_PUSH` is enabled, backups automatically push to the remote repository. Use `juvy status` to see if any commits are pending push.
+When `JUVY_REMOTE_PUSH` is enabled, backups automatically fetch, reconcile, and push to the remote repository. If another machine has pushed newer commits, juvy rebases local commits before pushing. Use `juvy status`, `juvy remote`, or `juvy doctor` to detect divergence and get guidance.
 
 ### Backup File Format
 
