@@ -100,7 +100,7 @@ _juvy_help() {
   echo "              'remote' shows current status"
   echo "              'remote <url>' sets/changes remote"
   echo "              'remote off' removes remote"
-  echo "              'remote push' fetches/rebases then pushes"
+  echo "              'remote sync' fetches/rebases then pushes"
   echo "  update      Update juvy to the latest version"
   echo "  version     Show version information"
   echo "  uninstall   Remove juvy from system (preserves backups)"
@@ -218,7 +218,7 @@ _juvy_prompt_remote_setup() {
 
   if [[ "$force_reinit" == "true" && -n "$current_remote" ]]; then
     echo "Current remote: $current_remote"
-    echo "Current auto-push: ${current_push:-false}"
+    echo "Current auto-sync: ${current_push:-false}"
     echo ""
     echo "Enter new git remote URL (or press Enter to keep current):"
   else
@@ -295,8 +295,8 @@ _juvy_prompt_remote_setup() {
 
     echo "Remote setup completed successfully"
     echo ""
-    echo "Auto-push is enabled. Future backups will be pushed automatically."
-    echo "To disable auto-push: Set JUVY_REMOTE_PUSH=false in $_JUVY_CONFIG_FILE"
+    echo "Auto-sync is enabled. Future backups will be synced automatically."
+    echo "To disable auto-sync: Set JUVY_REMOTE_PUSH=false in $_JUVY_CONFIG_FILE"
   fi
 }
 

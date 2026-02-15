@@ -35,7 +35,7 @@ teardown() {
   [[ "$remote_check" != *"origin"* ]]
 }
 
-@test "remote push syncs to remote" {
+@test "remote syncs to remote" {
   # Create bare repo and set as remote via git directly
   local remote_repo="$TEST_ROOT/remote.git"
   git init --bare "$remote_repo" >/dev/null 2>&1
@@ -47,7 +47,7 @@ teardown() {
   juvy backup
 
   # Set upstream and push
-  run juvy remote push
+  run juvy remote sync
 
   # Check if push succeeded or if there's a reasonable error
   # (push may fail in some environments due to git config)
@@ -91,7 +91,48 @@ teardown() {
   [[ "$output" != *"Invalid URL"* ]]
 }
 
-@test "remote push reconciles remote updates from another machine" {
+@test "remote push command is removed" {
+  run juvy remote push
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"removed"* ]]
+  [[ "$output" == *"juvy remote sync"* ]]
+}
+
+@test "remote sync uses remote default branch when branch is not main" {
+  local remote_repo="$TEST_ROOT/remote.git"
+  local seed_repo="$TEST_ROOT/seed"
+
+  git init --bare "$remote_repo" >/dev/null 2>&1
+  git clone "$remote_repo" "$seed_repo" >/dev/null 2>&1
+  git -C "$seed_repo" config user.name "Seed User"
+  git -C "$seed_repo" config user.email "seed@example.com"
+  git -C "$seed_repo" checkout -b master >/dev/null 2>&1
+  echo "seed" > "$seed_repo/seed.txt"
+  git -C "$seed_repo" add seed.txt
+  git -C "$seed_repo" commit -m "Seed master" >/dev/null 2>&1
+  git -C "$seed_repo" push -u origin master >/dev/null 2>&1
+  git --git-dir "$remote_repo" symbolic-ref HEAD refs/heads/master
+
+  git -C "$BACKUP_DIR" remote add origin "$remote_repo"
+  printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_PUSH='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  create_test_file "~/.zshrc" "machine-a-master-branch"
+  add_to_backup_list "~/.zshrc"
+  run juvy backup
+  [ "$status" -eq 0 ]
+
+  run juvy remote sync
+  [ "$status" -eq 0 ]
+
+  run git --git-dir "$remote_repo" rev-list --count master
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 2 ]
+}
+
+@test "remote sync reconciles remote updates from another machine" {
   local remote_repo="$TEST_ROOT/remote.git"
   local machine_b_repo="$TEST_ROOT/machine-b"
   local tracked_file="$BACKUP_DIR$HOME/.zshrc"
@@ -106,7 +147,7 @@ teardown() {
   add_to_backup_list "~/.zshrc"
   run juvy backup
   [ "$status" -eq 0 ]
-  run juvy remote push
+  run juvy remote sync
   [ "$status" -eq 0 ]
 
   git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
@@ -121,7 +162,7 @@ teardown() {
   create_test_file "~/.zshrc" "machine-a-v2-updated-content"
   run juvy backup
   [ "$status" -eq 0 ]
-  [[ "$output" != *"push failed"* ]]
+  [[ "$output" != *"sync failed"* ]]
 
   git -C "$BACKUP_DIR" fetch origin >/dev/null 2>&1
   run git -C "$BACKUP_DIR" rev-list --count "origin/main..HEAD"
@@ -151,7 +192,7 @@ teardown() {
   add_to_backup_list "~/.zshrc"
   run juvy backup
   [ "$status" -eq 0 ]
-  run juvy remote push
+  run juvy remote sync
   [ "$status" -eq 0 ]
 
   git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
@@ -170,5 +211,5 @@ teardown() {
   run juvy status
   [ "$status" -eq 0 ]
   [[ "$output" == *"Remote diverged"* ]]
-  [[ "$output" == *"juvy remote push"* ]]
+  [[ "$output" == *"juvy remote sync"* ]]
 }

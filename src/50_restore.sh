@@ -528,7 +528,7 @@ _juvy_status() {
   local remote_status=""
   local state_data state ahead behind
   if [[ -n "$_JUVY_REMOTE_URL" ]]; then
-    state_data="$(_juvy_remote_get_sync_state "main" "true")"
+    state_data="$(_juvy_remote_get_sync_state "true")"
     state="${state_data%%|*}"
     state_data="${state_data#*|}"
     ahead="${state_data%%|*}"
@@ -537,19 +537,19 @@ _juvy_status() {
     case "$state" in
       ahead)
         if [[ "$ahead" -eq 1 ]]; then
-          remote_status="1 commit not pushed to remote"
+          remote_status="1 commit not synced to remote"
         else
-          remote_status="$ahead commits not pushed to remote"
+          remote_status="$ahead commits not synced to remote"
         fi
         ;;
       behind)
-        remote_status="Remote has $behind newer commit(s). Run 'juvy remote push' to sync."
+        remote_status="Remote has $behind newer commit(s). Run 'juvy remote sync' to sync."
         ;;
       diverged)
-        remote_status="Remote diverged (ahead $ahead, behind $behind). Run 'juvy remote push' to auto-rebase."
+        remote_status="Remote diverged (ahead $ahead, behind $behind). Run 'juvy remote sync' to auto-rebase."
         ;;
       no_remote_branch)
-        remote_status="Remote branch main does not exist yet. Run 'juvy remote push' to create it."
+        remote_status="Remote branch does not exist yet. Run 'juvy remote sync' to create it."
         ;;
       unreachable)
         remote_status="Remote not reachable (check network/auth)."

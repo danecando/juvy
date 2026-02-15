@@ -67,7 +67,7 @@ _juvy_init_paths() {
   _juvy_detect_platform
 
   # Version constant
-  _JUVY_VERSION="1.3.0"
+  _JUVY_VERSION="2.0.0"
 
   # Config directory - respect environment override for testing
   if [[ -n "${JUVY_CONFIG_DIR:-}" ]]; then

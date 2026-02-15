@@ -124,7 +124,7 @@ teardown() {
   create_test_file "~/.zshrc" "base"
   add_to_backup_list "~/.zshrc"
   juvy backup >/dev/null 2>&1
-  juvy remote push >/dev/null 2>&1
+  juvy remote sync >/dev/null 2>&1
 
   git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
   git -C "$machine_b_repo" config user.name "Machine B"
@@ -141,5 +141,5 @@ teardown() {
   run juvy doctor
 
   [[ "$output" == *"diverged"* ]]
-  [[ "$output" == *"juvy remote push"* ]]
+  [[ "$output" == *"juvy remote sync"* ]]
 }
