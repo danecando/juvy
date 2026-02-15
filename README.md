@@ -4,6 +4,8 @@ Track your dotfiles and config without the hassle.
 
 `juvy` is a simple cross-platform backup utility written in bash. It uses rsync to automatically backup your files to a directory / git repo in the background. No symlinks or managing your files through another utility. Configure the files that you want to track and `juvy` will handle the rest. 
 
+See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
+
 ## Quick Start
 
 ```bash
@@ -20,6 +22,8 @@ juvy init
 
 Every shell startup triggers `juvy backup` in the background. rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
 
+If multiple shell sessions start at once, `juvy` uses a backup lock and skips overlapping runs to avoid rsync/git races.
+
 To disable automatic backups, remove the `juvy backup` line from your shell rc file (`~/.zshrc` or `~/.bashrc`).
 
 ## Commands
@@ -35,6 +39,7 @@ To disable automatic backups, remove the `juvy backup` line from your shell rc f
 
 - `juvy backup` - Backup tracked files (runs automatically on shell startup)
 - `juvy restore [--dry-run]` - Restore files from latest backup
+- `juvy restore --from-safety <path>` - Restore files from a safety backup directory
 - `juvy list` - Show tracked files
 - `juvy status [file]` - Show changes since last backup
 
@@ -102,6 +107,20 @@ When `JUVY_REMOTE_PUSH` is enabled, backups automatically push to the remote rep
 ```
 
 Excludes take precedence over includes.
+
+### Restore Safety Backups
+
+`juvy restore` creates a safety snapshot of current files before applying restore changes. After restore completes, it prints an undo command:
+
+```bash
+juvy restore "<safety-backup-path>"
+```
+
+You can also preview a safety restore without changing files:
+
+```bash
+juvy restore --dry-run --from-safety "<safety-backup-path>"
+```
 
 ### Default Backup Directory
 

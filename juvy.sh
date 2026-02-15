@@ -67,7 +67,7 @@ _juvy_init_paths() {
   _juvy_detect_platform
 
   # Version constant
-  _JUVY_VERSION="1.1.0"
+  _JUVY_VERSION="1.2.0"
 
   # Config directory - respect environment override for testing
   if [[ -n "${JUVY_CONFIG_DIR:-}" ]]; then
@@ -368,6 +368,7 @@ _juvy_help() {
   echo "  backup      Backup files and directories to configured directory"
   echo "  restore     Restore all files from latest backup"
   echo "              'restore --dry-run' shows what would be restored"
+  echo "              'restore --from-safety <path>' restores from safety backup"
   echo "  list        Show all tracked files and directories"
   echo "  status      Show changes since last backup"
   echo "              'status [file]' shows detailed diff for specific file"
@@ -990,7 +991,6 @@ _juvy_validate_backup_file() {
 
   return 0
 }
-
 
 ## BACKUP FUNCTIONS ###########################################################
 
