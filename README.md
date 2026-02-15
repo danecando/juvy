@@ -20,11 +20,13 @@ juvy init
 
 ## How It Works
 
-Every shell startup triggers `juvy backup` in the background. rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
+For `zsh` and `bash`, juvy installs a managed shell block that triggers `juvy backup` in the background for interactive shells. rsync only copies changed files, git only commits if there's something new. No scheduling, no daemons, no overhead.
 
 If multiple shell sessions start at once, `juvy` uses a backup lock and skips overlapping runs to avoid rsync/git races.
 
-To disable automatic backups, remove the `juvy backup` line from your shell rc file (`~/.zshrc` or `~/.bashrc`).
+To disable automatic backups temporarily, set `JUVY_AUTO_BACKUP=0`.
+To throttle startup runs, set `JUVY_AUTO_BACKUP_INTERVAL=<seconds>` (default: `300`).
+To fully remove shell integration, run `juvy uninstall` or remove the managed juvy block from your shell rc file.
 
 ## Commands
 
@@ -85,6 +87,8 @@ Settings in `~/.config/juvy/config`:
 | `JUVY_REMOTE_URL` | Git remote URL for syncing | (none) |
 | `JUVY_REMOTE_AUTO_SYNC` | Auto-sync after backup when remote is configured | `true` |
 | `JUVY_REMOTE_NAME` | Git remote name | `origin` |
+| `JUVY_AUTO_BACKUP` | Enable shell-startup auto backup (`0` disables) | `1` |
+| `JUVY_AUTO_BACKUP_INTERVAL` | Minimum seconds between shell-startup auto backups | `300` |
 
 Example config:
 
