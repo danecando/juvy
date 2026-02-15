@@ -6,27 +6,120 @@ set -e
 JUVY_DIR="$HOME/.juvy"
 JUVY_SCRIPT="$JUVY_DIR/juvy"
 JUVY_REPO_BASE="https://raw.githubusercontent.com/danecando/juvy/main"
+JUVY_SHELL_INTEGRATION_START="# >>> juvy auto backup >>>"
+JUVY_SHELL_INTEGRATION_END="# <<< juvy auto backup <<<"
 
-# Detect current shell for rc file
-detect_rc_file() {
+# Detect current shell name
+detect_shell_name() {
   local current_shell="${SHELL##*/}"
-  case "$current_shell" in
+  if [[ -n "$current_shell" ]]; then
+    echo "$current_shell"
+  else
+    echo "unknown"
+  fi
+}
+
+# Detect rc file for a given shell
+detect_rc_file() {
+  local shell_name="$1"
+
+  case "$shell_name" in
     zsh)  echo "$HOME/.zshrc" ;;
-    bash)
-      if [[ -f "$HOME/.bash_profile" ]]; then
-        echo "$HOME/.bash_profile"
-      else
-        echo "$HOME/.bashrc"
-      fi
-      ;;
+    bash) echo "$HOME/.bashrc" ;;
     *)    echo "$HOME/.profile" ;;
   esac
 }
 
+remove_managed_block_from_file() {
+  local file_path="$1"
+  local start_marker="$2"
+  local end_marker="$3"
+  local temp_file
+
+  [[ -f "$file_path" ]] || return 0
+  grep -Fq "$start_marker" "$file_path" || return 1
+  grep -Fq "$end_marker" "$file_path" || return 1
+
+  temp_file="$file_path.tmp"
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start { in_block=1; next }
+    in_block && $0 == end { in_block=0; next }
+    !in_block { print }
+  ' "$file_path" > "$temp_file"
+
+  if ! cmp -s "$file_path" "$temp_file" 2>/dev/null; then
+    mv "$temp_file" "$file_path"
+    return 0
+  fi
+
+  rm -f "$temp_file"
+  return 1
+}
+
+write_shell_integration_block() {
+  local rc_file="$1"
+
+  cat >> "$rc_file" << EOF
+$JUVY_SHELL_INTEGRATION_START
+export PATH="\$HOME/.juvy:\$PATH"
+if [[ "\${JUVY_AUTO_BACKUP:-1}" != "0" ]] && [[ "\$-" == *i* ]] && command -v juvy >/dev/null 2>&1; then
+  if [[ -z "\${JUVY_AUTO_BACKUP_STARTED:-}" ]]; then
+    export JUVY_AUTO_BACKUP_STARTED=1
+    juvy backup >/dev/null 2>&1 &
+  fi
+fi
+$JUVY_SHELL_INTEGRATION_END
+EOF
+}
+
+ensure_bash_profile_bridge() {
+  local bash_profile="$HOME/.bash_profile"
+  local bridge_start="# >>> juvy bashrc bridge >>>"
+  local bridge_end="# <<< juvy bashrc bridge <<<"
+
+  touch "$bash_profile" 2>/dev/null || return 1
+  remove_managed_block_from_file "$bash_profile" "$bridge_start" "$bridge_end" >/dev/null 2>&1 || true
+
+  if [[ -s "$bash_profile" ]]; then
+    printf '\n' >> "$bash_profile"
+  fi
+
+  cat >> "$bash_profile" << 'EOF'
+# >>> juvy bashrc bridge >>>
+if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+# <<< juvy bashrc bridge <<<
+EOF
+
+  return 0
+}
+
+upsert_shell_integration() {
+  local shell_name="$1"
+  local rc_file
+
+  rc_file="$(detect_rc_file "$shell_name")"
+  touch "$rc_file" 2>/dev/null || return 1
+
+  remove_managed_block_from_file "$rc_file" "$JUVY_SHELL_INTEGRATION_START" "$JUVY_SHELL_INTEGRATION_END" >/dev/null 2>&1 || true
+
+  if [[ -s "$rc_file" ]]; then
+    printf '\n' >> "$rc_file"
+  fi
+
+  write_shell_integration_block "$rc_file"
+
+  if [[ "$shell_name" == "bash" ]]; then
+    ensure_bash_profile_bridge || return 1
+  fi
+
+  return 0
+}
+
 # Check prerequisites
-current_shell="${SHELL##*/}"
-if [[ "$current_shell" != "bash" && "$current_shell" != "zsh" ]]; then
-  echo "juvy requires bash or zsh" >&2
+if ! command -v bash >/dev/null 2>&1; then
+  echo "juvy requires bash" >&2
   exit 1
 fi
 
@@ -55,15 +148,21 @@ fi
 
 chmod +x "$JUVY_SCRIPT"
 
-# Add to PATH in rc file if not already there
-RC_FILE="$(detect_rc_file)"
-if ! grep -q '\.juvy' "$RC_FILE" 2>/dev/null; then
-  {
-    echo ""
-    echo "# juvy dotfile backup tool"
-    echo 'export PATH="$HOME/.juvy:$PATH"'
-    echo '( juvy backup >/dev/null 2>&1 & )'
-  } >> "$RC_FILE"
+# Configure shell integration
+current_shell="$(detect_shell_name)"
+target_shell="$current_shell"
+if [[ "$target_shell" != "zsh" && "$target_shell" != "bash" ]]; then
+  if [[ -f "$HOME/.zshrc" ]]; then
+    target_shell="zsh"
+  else
+    target_shell="bash"
+  fi
+  echo "Detected shell '$current_shell'. Configuring $target_shell integration."
+fi
+
+if ! upsert_shell_integration "$target_shell"; then
+  echo "Failed to configure shell integration for $target_shell" >&2
+  exit 1
 fi
 
 # Add to current PATH for immediate use

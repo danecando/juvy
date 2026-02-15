@@ -25,6 +25,8 @@ _JUVY_REMOTE_URL=""
 _JUVY_REMOTE_AUTO_SYNC=""
 _JUVY_REMOTE_NAME=""
 _JUVY_PLATFORM=""
+_JUVY_SHELL_INTEGRATION_START="# >>> juvy auto backup >>>"
+_JUVY_SHELL_INTEGRATION_END="# <<< juvy auto backup <<<"
 
 # Global arrays for backup entry collection (Bash 3.2 compatible)
 _JUVY_INCLUDE_PATHS=()

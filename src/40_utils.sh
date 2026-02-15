@@ -526,6 +526,135 @@ _juvy_update() {
   fi
 }
 
+_juvy_detect_shell_name() {
+  local current_shell="${SHELL##*/}"
+  if [[ -n "$current_shell" ]]; then
+    echo "$current_shell"
+  else
+    echo "unknown"
+  fi
+}
+
+_juvy_detect_rc_file() {
+  local shell_name="${1:-$(_juvy_detect_shell_name)}"
+
+  case "$shell_name" in
+    zsh)
+      echo "$HOME/.zshrc"
+      ;;
+    bash)
+      echo "$HOME/.bashrc"
+      ;;
+    *)
+      echo "$HOME/.profile"
+      ;;
+  esac
+}
+
+_juvy_remove_managed_block_from_file() {
+  local file_path="$1"
+  local start_marker="$2"
+  local end_marker="$3"
+  local temp_file
+
+  [[ -f "$file_path" ]] || return 0
+  grep -Fq "$start_marker" "$file_path" || return 1
+  grep -Fq "$end_marker" "$file_path" || return 1
+
+  temp_file="$file_path.tmp"
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start { in_block=1; removed=1; next }
+    in_block && $0 == end { in_block=0; next }
+    !in_block { print }
+  ' "$file_path" > "$temp_file"
+
+  if ! cmp -s "$file_path" "$temp_file" 2>/dev/null; then
+    mv "$temp_file" "$file_path"
+    return 0
+  fi
+
+  rm -f "$temp_file"
+  return 1
+}
+
+_juvy_write_shell_integration_block() {
+  local rc_file="$1"
+
+  cat >> "$rc_file" << EOF
+$_JUVY_SHELL_INTEGRATION_START
+export PATH="\$HOME/.juvy:\$PATH"
+if [[ "\${JUVY_AUTO_BACKUP:-1}" != "0" ]] && [[ "\$-" == *i* ]] && command -v juvy >/dev/null 2>&1; then
+  if [[ -z "\${JUVY_AUTO_BACKUP_STARTED:-}" ]]; then
+    export JUVY_AUTO_BACKUP_STARTED=1
+    juvy backup >/dev/null 2>&1 &
+  fi
+fi
+$_JUVY_SHELL_INTEGRATION_END
+EOF
+}
+
+_juvy_ensure_bash_profile_bridge() {
+  local bash_profile="$HOME/.bash_profile"
+  local bridge_start="# >>> juvy bashrc bridge >>>"
+  local bridge_end="# <<< juvy bashrc bridge <<<"
+
+  touch "$bash_profile" 2>/dev/null || return 1
+
+  _juvy_remove_managed_block_from_file "$bash_profile" "$bridge_start" "$bridge_end" >/dev/null 2>&1 || true
+
+  if [[ -s "$bash_profile" ]]; then
+    printf '\n' >> "$bash_profile"
+  fi
+
+  cat >> "$bash_profile" << 'EOF'
+# >>> juvy bashrc bridge >>>
+if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+# <<< juvy bashrc bridge <<<
+EOF
+
+  return 0
+}
+
+_juvy_remove_bash_profile_bridge() {
+  local bash_profile="$HOME/.bash_profile"
+  local bridge_start="# >>> juvy bashrc bridge >>>"
+  local bridge_end="# <<< juvy bashrc bridge <<<"
+
+  _juvy_remove_managed_block_from_file "$bash_profile" "$bridge_start" "$bridge_end" >/dev/null 2>&1 || true
+}
+
+_juvy_upsert_shell_integration() {
+  local shell_name="${1:-$(_juvy_detect_shell_name)}"
+  local rc_file
+
+  case "$shell_name" in
+    zsh|bash)
+      rc_file="$(_juvy_detect_rc_file "$shell_name")"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  touch "$rc_file" 2>/dev/null || return 1
+
+  _juvy_remove_managed_block_from_file "$rc_file" "$_JUVY_SHELL_INTEGRATION_START" "$_JUVY_SHELL_INTEGRATION_END" >/dev/null 2>&1 || true
+
+  if [[ -s "$rc_file" ]]; then
+    printf '\n' >> "$rc_file"
+  fi
+
+  _juvy_write_shell_integration_block "$rc_file"
+
+  if [[ "$shell_name" == "bash" ]]; then
+    _juvy_ensure_bash_profile_bridge || return 1
+  fi
+
+  return 0
+}
+
 _juvy_nuke() {
   local confirm
 
@@ -571,15 +700,12 @@ _juvy_uninstall_internal() {
 
   # Remove from shell rc files
   local rc_file
-  for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-    if [[ -f "$rc_file" ]] && grep -q '\.juvy\|juvy backup' "$rc_file"; then
-      # Create a temporary file without the juvy lines
-      {
-        grep -v '\.juvy' "$rc_file" | grep -v "# juvy dotfile backup tool" | grep -v "juvy backup"
-      } > "$rc_file.tmp" && mv "$rc_file.tmp" "$rc_file"
+  for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if _juvy_remove_managed_block_from_file "$rc_file" "$_JUVY_SHELL_INTEGRATION_START" "$_JUVY_SHELL_INTEGRATION_END"; then
       echo "Removed juvy from $rc_file"
     fi
   done
+  _juvy_remove_bash_profile_bridge
 }
 
 _juvy_is_sensitive_file() {

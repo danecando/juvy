@@ -92,6 +92,69 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+@test "doctor --fix writes managed zsh shell integration" {
+  export SHELL="/bin/zsh"
+
+  mkdir -p "$HOME/.juvy"
+  touch "$HOME/.juvy/juvy"
+
+  create_test_file "~/.zshrc" "# existing zshrc content"
+
+  run juvy doctor --fix
+  [ "$status" -eq 0 ]
+
+  assert_file_contains "$HOME/.zshrc" "# >>> juvy auto backup >>>"
+  assert_file_contains "$HOME/.zshrc" "# <<< juvy auto backup <<<"
+  assert_file_contains "$HOME/.zshrc" "# existing zshrc content"
+}
+
+@test "doctor --fix writes bash integration and bash_profile bridge" {
+  export SHELL="/bin/bash"
+
+  mkdir -p "$HOME/.juvy"
+  touch "$HOME/.juvy/juvy"
+  create_test_file "~/.bashrc" "# existing bashrc content"
+
+  run juvy doctor --fix
+  [ "$status" -eq 0 ]
+
+  assert_file_contains "$HOME/.bashrc" "# >>> juvy auto backup >>>"
+  assert_file_contains "$HOME/.bash_profile" "# >>> juvy bashrc bridge >>>"
+  assert_file_contains "$HOME/.bash_profile" ". \"\$HOME/.bashrc\""
+}
+
+@test "uninstall removes managed integration blocks and keeps unrelated rc lines" {
+  cat > "$HOME/.zshrc" << 'EOF'
+export FOO=bar
+# >>> juvy auto backup >>>
+export PATH="$HOME/.juvy:$PATH"
+juvy backup >/dev/null 2>&1 &
+# <<< juvy auto backup <<<
+EOF
+
+  _juvy_uninstall_internal
+
+  assert_file_contains "$HOME/.zshrc" "export FOO=bar"
+  assert_file_not_contains "$HOME/.zshrc" "# >>> juvy auto backup >>>"
+  assert_file_not_contains "$HOME/.zshrc" "# <<< juvy auto backup <<<"
+}
+
+@test "uninstall does not truncate rc file when managed block end marker is missing" {
+  cat > "$HOME/.zshrc" << 'EOF'
+export FOO=bar
+# >>> juvy auto backup >>>
+export PATH="$HOME/.juvy:$PATH"
+juvy backup >/dev/null 2>&1 &
+export BAR=baz
+EOF
+
+  _juvy_uninstall_internal
+
+  assert_file_contains "$HOME/.zshrc" "export FOO=bar"
+  assert_file_contains "$HOME/.zshrc" "export BAR=baz"
+  assert_file_contains "$HOME/.zshrc" "# >>> juvy auto backup >>>"
+}
+
 @test "doctor validates exclude patterns" {
   create_test_dir "~/.config/app/"
   create_test_file "~/.config/app/config.txt" "config"
