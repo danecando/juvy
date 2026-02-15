@@ -3,6 +3,19 @@
 # Perform backup of all configured files and commit changes
 
 _juvy_backup() {
+  local backup_status=0
+
+  if ! _juvy_acquire_lock "backup"; then
+    _juvy_warn "Backup already in progress; skipping this run"
+    return 0
+  fi
+
+  _juvy_backup_internal "$@" || backup_status=$?
+  _juvy_release_lock "backup"
+  return "$backup_status"
+}
+
+_juvy_backup_internal() {
   _juvy_validate_backup_dir_configured || return 1
   _juvy_validate_backup_file_exists || return 1
 

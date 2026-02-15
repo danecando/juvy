@@ -3,6 +3,7 @@
 
 _juvy_restore() {
   local dry_run="false"
+  local safety_restore_path=""
 
   # Parse arguments
   while [[ $# -gt 0 ]]; do
@@ -11,16 +12,37 @@ _juvy_restore() {
         dry_run="true"
         shift
         ;;
+      --from-safety)
+        shift
+        if [[ $# -eq 0 ]]; then
+          echo "Missing path for --from-safety" >&2
+          echo "Usage: juvy restore [--dry-run] [--from-safety <path>]" >&2
+          return 1
+        fi
+        safety_restore_path="$1"
+        shift
+        ;;
       -*)
         echo "Unknown option: $1" >&2
-        echo "Usage: juvy restore [--dry-run]" >&2
+        echo "Usage: juvy restore [--dry-run] [--from-safety <path>]" >&2
         return 1
         ;;
       *)
+        if [[ -n "$safety_restore_path" ]]; then
+          echo "Too many arguments: $1" >&2
+          echo "Usage: juvy restore [--dry-run] [--from-safety <path>]" >&2
+          return 1
+        fi
+        safety_restore_path="$1"
         shift
         ;;
     esac
   done
+
+  if [[ -n "$safety_restore_path" ]]; then
+    _juvy_restore_from_safety "$safety_restore_path" "$dry_run"
+    return $?
+  fi
 
   _juvy_validate_backup_dir_exists || return 1
   _juvy_validate_backup_file_exists || return 1
@@ -75,8 +97,41 @@ _juvy_restore() {
   echo "To undo: juvy restore \"$safety_backup_path\""
 }
 
+_juvy_restore_from_safety() {
+  local safety_path="$1"
+  local dry_run="${2:-false}"
+
+  if [[ ! -d "$safety_path" ]]; then
+    _juvy_error "Safety backup path not found: $safety_path"
+    return 1
+  fi
+
+  local rsync_args=(-a --ignore-times --ignore-errors)
+  if [[ "${JUVY_VERBOSE:-}" == "1" ]]; then
+    rsync_args=(-av --ignore-times --ignore-errors)
+  fi
+
+  if [[ "$dry_run" == "true" ]]; then
+    rsync_args+=(--dry-run --itemize-changes)
+    _juvy_info "Showing what would be restored from safety backup..."
+  else
+    _juvy_info "Restoring files from safety backup..."
+  fi
+
+  if ! _juvy_rsync_simple --allow-partial "${rsync_args[@]}" "$safety_path/" "/"; then
+    _juvy_error "Failed to restore from safety backup"
+    return 1
+  fi
+
+  if [[ "$dry_run" == "true" ]]; then
+    _juvy_result "Dry-run complete (no files modified)"
+  else
+    _juvy_result "Safety backup restore complete"
+  fi
+}
+
 _juvy_show_restore_preview() {
-  local entry file_count=0 dir_count=0 total_files=0
+  local entry parsed_data entry_type entry_path file_count=0 dir_count=0 total_files=0
   local backup_path source_path file_size last_backup
 
   last_backup="$(_juvy_git log -1 --format='%cd' --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null)"
@@ -88,10 +143,14 @@ _juvy_show_restore_preview() {
 
   while IFS= read -r entry; do
     entry="$(_juvy_parse_entry_basic "$entry")" || continue
+    parsed_data="$(_juvy_parse_backup_entry "$entry")"
+    entry_type="$(_juvy_extract_parsed_field "$parsed_data" "type" "include")"
+    entry_path="$(_juvy_extract_parsed_field "$parsed_data" "path" "")"
+    [[ "$entry_type" != "include" || -z "$entry_path" ]] && continue
 
-    backup_path="$(_juvy_entry_to_backup_path "$entry")"
+    backup_path="$(_juvy_entry_to_backup_path "$entry_path")"
 
-    if [[ "$entry" == */ ]]; then
+    if [[ "$entry_path" == */ ]]; then
       if [[ -d "$backup_path" ]]; then
         local dir_file_count
         dir_file_count=$(find "$backup_path" -type f 2>/dev/null | wc -l)
@@ -118,21 +177,25 @@ _juvy_show_restore_preview() {
   echo "Files to restore:"
   while IFS= read -r entry; do
     entry="$(_juvy_parse_entry_basic "$entry")" || continue
+    parsed_data="$(_juvy_parse_backup_entry "$entry")"
+    entry_type="$(_juvy_extract_parsed_field "$parsed_data" "type" "include")"
+    entry_path="$(_juvy_extract_parsed_field "$parsed_data" "path" "")"
+    [[ "$entry_type" != "include" || -z "$entry_path" ]] && continue
 
-    backup_path="$(_juvy_entry_to_backup_path "$entry")"
+    backup_path="$(_juvy_entry_to_backup_path "$entry_path")"
 
-    if [[ "$entry" == */ ]]; then
+    if [[ "$entry_path" == */ ]]; then
       if [[ -d "$backup_path" ]]; then
         local dir_file_count
         dir_file_count=$(find "$backup_path" -type f 2>/dev/null | wc -l)
         dir_file_count="${dir_file_count#"${dir_file_count%%[![:space:]]*}"}"
-        echo "  ~$entry ($dir_file_count files)"
+        echo "  $entry_path ($dir_file_count files)"
       fi
     else
       if [[ -f "$backup_path" ]]; then
         file_size=$(du -h "$backup_path" 2>/dev/null | cut -f1)
         [[ -z "$file_size" ]] && file_size="0B"
-        echo "  ~$entry ($file_size)"
+        echo "  $entry_path ($file_size)"
       fi
     fi
   done < "$_JUVY_BACKUP_FILE"
@@ -141,7 +204,8 @@ _juvy_show_restore_preview() {
 }
 
 _juvy_create_safety_backup() {
-  local timestamp safety_dir entry backup_path source_path dest_path dest_dir
+  local timestamp safety_dir entry parsed_data entry_type entry_path
+  local source_path dest_path dest_dir
 
   timestamp="$(date '+%Y-%m-%d_%H-%M-%S')"
   safety_dir="$_JUVY_CONFIG_DIR/safety-backup/$timestamp"
@@ -153,11 +217,15 @@ _juvy_create_safety_backup() {
 
   while IFS= read -r entry; do
     entry="$(_juvy_parse_entry_basic "$entry")" || continue
+    parsed_data="$(_juvy_parse_backup_entry "$entry")"
+    entry_type="$(_juvy_extract_parsed_field "$parsed_data" "type" "include")"
+    entry_path="$(_juvy_extract_parsed_field "$parsed_data" "path" "")"
+    [[ "$entry_type" != "include" || -z "$entry_path" ]] && continue
 
-    source_path="$(_juvy_entry_to_source_path "$entry")"
+    source_path="$(_juvy_entry_to_source_path "$entry_path")" || continue
 
     if [[ -e "$source_path" ]]; then
-      dest_path="$safety_dir$entry"
+      dest_path="$safety_dir$source_path"
       dest_dir="$(dirname "$dest_path")"
 
       if ! mkdir -p "$dest_dir" > /dev/null 2>&1; then
@@ -165,15 +233,19 @@ _juvy_create_safety_backup() {
         return 1
       fi
 
-      if [[ "$entry" == */ ]]; then
+      if [[ "$entry_path" == */ ]]; then
         if [[ -d "$source_path" ]]; then
-          if ! rsync -a "$source_path" "$dest_dir/" > /dev/null 2>&1; then
+          if ! mkdir -p "$dest_path" > /dev/null 2>&1; then
+            _juvy_error "Failed to create safety backup directory: $dest_path"
+            return 1
+          fi
+          if ! rsync -a "$source_path/" "$dest_path/" > /dev/null 2>&1; then
             _juvy_error "Failed to backup directory: $source_path"
             return 1
           fi
         fi
       else
-        if [[ -f "$source_path" ]]; then
+        if [[ -e "$source_path" ]]; then
           if ! rsync -a "$source_path" "$dest_path" > /dev/null 2>&1; then
             _juvy_error "Failed to backup file: $source_path"
             return 1
@@ -643,4 +715,3 @@ _juvy_get_relative_time() {
     echo "$((diff_seconds / 86400)) days ago"
   fi
 }
-

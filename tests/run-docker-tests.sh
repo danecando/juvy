@@ -196,11 +196,23 @@ main() {
   export REBUILD="$rebuild"
 
   if [[ "$use_local" == "true" ]]; then
-    run_local_tests "${test_files[@]}"
+    if [[ ${#test_files[@]} -gt 0 ]]; then
+      run_local_tests "${test_files[@]}"
+    else
+      run_local_tests
+    fi
   elif [[ "$use_bash32" == "true" ]]; then
-    run_docker_tests "test-bash32" "${test_files[@]}"
+    if [[ ${#test_files[@]} -gt 0 ]]; then
+      run_docker_tests "test-bash32" "${test_files[@]}"
+    else
+      run_docker_tests "test-bash32"
+    fi
   else
-    run_docker_tests "test" "${test_files[@]}"
+    if [[ ${#test_files[@]} -gt 0 ]]; then
+      run_docker_tests "test" "${test_files[@]}"
+    else
+      run_docker_tests "test"
+    fi
   fi
 
   log_info "All tests passed!"

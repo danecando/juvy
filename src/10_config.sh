@@ -133,8 +133,14 @@ _juvy_parse_entry_basic() {
 }
 
 _juvy_rsync_simple() {
+  local allow_partial=false
   local rsync_output
   local rsync_exit_code
+
+  if [[ "${1:-}" == "--allow-partial" ]]; then
+    allow_partial=true
+    shift
+  fi
 
   rsync_output=$(rsync "$@" 2>&1)
   rsync_exit_code=$?
@@ -146,12 +152,15 @@ _juvy_rsync_simple() {
     return 0
   fi
 
-  # Handle partial transfer as success if files were transferred (for restore operations)
-  if [[ $rsync_exit_code -eq 23 ]] && [[ "$rsync_output" == *"sent "* ]]; then
-    if [[ "${JUVY_VERBOSE:-}" == "1" && -n "$rsync_output" ]]; then
-      printf "%s\n" "$rsync_output"
+  # For restore operations, allow common permission-related partial transfers.
+  if [[ $rsync_exit_code -eq 23 && "$allow_partial" == "true" ]]; then
+    if [[ "$rsync_output" == *"Permission denied"* || "$rsync_output" == *"Operation not permitted"* ]]; then
+      _juvy_warn "rsync completed with permission-related partial transfer"
+      if [[ "${JUVY_VERBOSE:-}" == "1" && -n "$rsync_output" ]]; then
+        printf "%s\n" "$rsync_output"
+      fi
+      return 0
     fi
-    return 0
   fi
 
   # Show user-friendly error message

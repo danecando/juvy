@@ -401,7 +401,7 @@ _juvy_rsync_restore_with_filters() {
 
   # Use rsync to copy tracked files without removing existing files
   # Use --ignore-errors to continue despite permission issues on system directories
-  if ! _juvy_rsync_simple "${rsync_args[@]}" "$source/" "$dest"; then
+  if ! _juvy_rsync_simple --allow-partial "${rsync_args[@]}" "$source/" "$dest"; then
     _juvy_show_filter_debug "$filter_file"
     return 1
   fi
@@ -428,6 +428,23 @@ _juvy_log() {
 
 _juvy_log_error() {
   _juvy_log "ERROR: $1"
+}
+
+_juvy_acquire_lock() {
+  local lock_name="$1"
+  local lock_dir="$_JUVY_CONFIG_DIR/locks/${lock_name}.lock"
+
+  if mkdir -p "$_JUVY_CONFIG_DIR/locks" >/dev/null 2>&1 && mkdir "$lock_dir" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+_juvy_release_lock() {
+  local lock_name="$1"
+  local lock_dir="$_JUVY_CONFIG_DIR/locks/${lock_name}.lock"
+  rm -rf "$lock_dir" >/dev/null 2>&1
 }
 
 
@@ -615,13 +632,13 @@ _juvy_validate_path() {
   local input_path="$1"
   local full_path
 
-  if [[ "$input_path" = /* ]]; then
+  if [[ "$input_path" == "~/"* ]]; then
+    full_path="${input_path/#\~/$HOME}"
+  elif [[ "$input_path" = /* ]]; then
     full_path="$input_path"
   else
-    # Path relative to HOME (remove leading ./ or /)
-    input_path="${input_path#./}"
-    input_path="${input_path#/}"
-    full_path="$HOME/$input_path"
+    # Path relative to current working directory.
+    full_path="$PWD/${input_path#./}"
   fi
 
   if [[ ! -e "$full_path" ]]; then
@@ -644,13 +661,11 @@ _juvy_calculate_directory_info() {
   if [[ "$input_path" = /* ]]; then
     full_path="$input_path"
   else
-    # Path is relative to HOME or in backup entry format
+    # Path is relative to current directory or in backup entry format
     if [[ "$input_path" = ~* ]]; then
       full_path="${input_path/#\~/$HOME}"
     else
-      input_path="${input_path#./}"
-      input_path="${input_path#/}"
-      full_path="$HOME/$input_path"
+      full_path="$PWD/${input_path#./}"
     fi
   fi
 
@@ -736,6 +751,7 @@ _juvy_prompt_large_directory() {
 _juvy_add() {
   local paths=()
   local p
+  local failed_count=0
 
   _juvy_validate_backup_file_exists || return 1
 
@@ -769,15 +785,18 @@ _juvy_add() {
     for p in "${paths[@]}"; do
       # Validate path exists
       if ! _juvy_validate_path "$p"; then
+        (( ++failed_count ))
         continue
       fi
 
       # Convert to absolute path if relative
       local full_path
-      if [[ "$p" == /* ]]; then
+      if [[ "$p" == "~/"* ]]; then
+        full_path="${p/#\~/$HOME}"
+      elif [[ "$p" == /* ]]; then
         full_path="$p"
       else
-        full_path="$PWD/$p"
+        full_path="$PWD/${p#./}"
       fi
 
       # Convert to backup entry format using Unix conventions
@@ -856,9 +875,14 @@ _juvy_add() {
 
       else
         echo "Path not found: $p" >&2
+        (( ++failed_count ))
         continue
       fi
     done
+
+    if (( failed_count > 0 )); then
+      return 1
+    fi
   fi
 }
 
