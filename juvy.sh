@@ -1967,30 +1967,6 @@ _juvy_remove_managed_block_from_file() {
   return 1
 }
 
-_juvy_remove_legacy_integration_lines_from_file() {
-  local file_path="$1"
-  local temp_file
-
-  [[ -f "$file_path" ]] || return 0
-
-  temp_file="$file_path.tmp"
-  awk '
-    $0 == "# juvy dotfile backup tool" { next }
-    $0 == "export PATH=\"$HOME/.juvy:$PATH\"" { next }
-    $0 ~ /^[[:space:]]*\([[:space:]]*juvy backup >\/dev\/null 2>&1 &[[:space:]]*\)[[:space:]]*$/ { next }
-    $0 ~ /^[[:space:]]*juvy backup >\/dev\/null 2>&1 &[[:space:]]*$/ { next }
-    { print }
-  ' "$file_path" > "$temp_file"
-
-  if ! cmp -s "$file_path" "$temp_file" 2>/dev/null; then
-    mv "$temp_file" "$file_path"
-    return 0
-  fi
-
-  rm -f "$temp_file"
-  return 1
-}
-
 _juvy_write_shell_integration_block() {
   local rc_file="$1"
 
@@ -2071,7 +2047,6 @@ _juvy_upsert_shell_integration() {
   touch "$rc_file" 2>/dev/null || return 1
 
   _juvy_remove_managed_block_from_file "$rc_file" "$_JUVY_SHELL_INTEGRATION_START" "$_JUVY_SHELL_INTEGRATION_END" >/dev/null 2>&1 || true
-  _juvy_remove_legacy_integration_lines_from_file "$rc_file" >/dev/null 2>&1 || true
 
   if [[ -s "$rc_file" ]]; then
     printf '\n' >> "$rc_file"
@@ -2080,7 +2055,6 @@ _juvy_upsert_shell_integration() {
   _juvy_write_shell_integration_block "$rc_file"
 
   if [[ "$shell_name" == "bash" ]]; then
-    _juvy_remove_legacy_integration_lines_from_file "$HOME/.bash_profile" >/dev/null 2>&1 || true
     _juvy_ensure_bash_profile_bridge || return 1
   fi
 
@@ -2135,9 +2109,6 @@ _juvy_uninstall_internal() {
   for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     if _juvy_remove_managed_block_from_file "$rc_file" "$_JUVY_SHELL_INTEGRATION_START" "$_JUVY_SHELL_INTEGRATION_END"; then
       echo "Removed juvy from $rc_file"
-    fi
-    if _juvy_remove_legacy_integration_lines_from_file "$rc_file"; then
-      echo "Removed legacy juvy lines from $rc_file"
     fi
   done
   _juvy_remove_bash_profile_bridge

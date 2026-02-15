@@ -54,30 +54,6 @@ remove_managed_block_from_file() {
   return 1
 }
 
-remove_legacy_integration_lines_from_file() {
-  local file_path="$1"
-  local temp_file
-
-  [[ -f "$file_path" ]] || return 0
-
-  temp_file="$file_path.tmp"
-  awk '
-    $0 == "# juvy dotfile backup tool" { next }
-    $0 == "export PATH=\"$HOME/.juvy:$PATH\"" { next }
-    $0 ~ /^[[:space:]]*\([[:space:]]*juvy backup >\/dev\/null 2>&1 &[[:space:]]*\)[[:space:]]*$/ { next }
-    $0 ~ /^[[:space:]]*juvy backup >\/dev\/null 2>&1 &[[:space:]]*$/ { next }
-    { print }
-  ' "$file_path" > "$temp_file"
-
-  if ! cmp -s "$file_path" "$temp_file" 2>/dev/null; then
-    mv "$temp_file" "$file_path"
-    return 0
-  fi
-
-  rm -f "$temp_file"
-  return 1
-}
-
 write_shell_integration_block() {
   local rc_file="$1"
 
@@ -141,7 +117,6 @@ upsert_shell_integration() {
   touch "$rc_file" 2>/dev/null || return 1
 
   remove_managed_block_from_file "$rc_file" "$JUVY_SHELL_INTEGRATION_START" "$JUVY_SHELL_INTEGRATION_END" >/dev/null 2>&1 || true
-  remove_legacy_integration_lines_from_file "$rc_file" >/dev/null 2>&1 || true
 
   if [[ -s "$rc_file" ]]; then
     printf '\n' >> "$rc_file"
@@ -150,7 +125,6 @@ upsert_shell_integration() {
   write_shell_integration_block "$rc_file"
 
   if [[ "$shell_name" == "bash" ]]; then
-    remove_legacy_integration_lines_from_file "$HOME/.bash_profile" >/dev/null 2>&1 || true
     ensure_bash_profile_bridge || return 1
   fi
 
