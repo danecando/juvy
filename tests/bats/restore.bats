@@ -132,3 +132,43 @@ teardown() {
   # The actual behavior depends on juvy's implementation
   [[ "$status" -eq 0 || "$output" == *"nothing"* || "$output" == *"empty"* || "$output" == *"No"* ]]
 }
+
+@test "restore works when backup entries have inline comments" {
+  create_test_file "~/.zshrc" "original content"
+  printf "~/.zshrc # shell config\n" > "$JUVY_CONFIG_DIR/backup"
+
+  juvy backup
+
+  create_test_file "~/.zshrc" "modified content"
+
+  run_restore_confirmed
+
+  local restored_content
+  restored_content=$(cat "$HOME/.zshrc")
+  [ "$restored_content" = "original content" ]
+}
+
+@test "restore can undo from safety backup path" {
+  create_test_file "~/.testfile" "v1"
+  add_to_backup_list "~/.testfile"
+
+  juvy backup
+  create_test_file "~/.testfile" "v2"
+
+  run_restore_confirmed
+
+  # Find most recent safety backup path
+  local safety_path
+  safety_path=$(find "$JUVY_CONFIG_DIR/safety-backup" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1)
+  [ -n "$safety_path" ]
+  [ -d "$safety_path" ]
+
+  # Change file again and undo from safety backup path
+  create_test_file "~/.testfile" "v3"
+  run juvy restore "$safety_path"
+
+  [ "$status" -eq 0 ]
+  local current_content
+  current_content=$(cat "$HOME/.testfile")
+  [ "$current_content" = "v2" ]
+}

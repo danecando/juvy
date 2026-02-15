@@ -56,6 +56,32 @@ teardown() {
   [ "$count" -eq 1 ]
 }
 
+@test "add accepts home-relative tilde path when quoted" {
+  create_test_file "~/.tildefile" "content"
+
+  run juvy add "~/.tildefile"
+
+  [ "$status" -eq 0 ]
+  assert_file_contains "$JUVY_CONFIG_DIR/backup" "~/.tildefile"
+}
+
+@test "add accepts path relative to current directory" {
+  mkdir -p "$TEST_ROOT/project"
+  cd "$TEST_ROOT/project"
+  printf "content\n" > "./local.conf"
+
+  run juvy add "./local.conf"
+
+  [ "$status" -eq 0 ]
+  assert_file_contains "$JUVY_CONFIG_DIR/backup" "$TEST_ROOT/project/local.conf"
+}
+
+@test "add returns non-zero when all requested paths are invalid" {
+  run juvy add "$HOME/.does-not-exist"
+
+  [ "$status" -ne 0 ]
+}
+
 # ------------------------------------------------------------------------------
 # remove command
 # ------------------------------------------------------------------------------
