@@ -278,6 +278,34 @@ _juvy_doctor() {
 
         if _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
           _juvy_result "Remote reachable"
+
+          local remote_state_data remote_state remote_ahead remote_behind
+          remote_state_data="$(_juvy_remote_get_sync_state "main" "true")"
+          remote_state="${remote_state_data%%|*}"
+          remote_state_data="${remote_state_data#*|}"
+          remote_ahead="${remote_state_data%%|*}"
+          remote_behind="${remote_state_data#*|}"
+
+          case "$remote_state" in
+            ahead)
+              _juvy_warn "$remote_ahead commit(s) pending push (run 'juvy remote push')"
+              (( ++warnings ))
+              ;;
+            behind)
+              _juvy_warn "Local backup is behind remote by $remote_behind commit(s)"
+              _juvy_warn "Run 'juvy remote push' to sync (automatic rebase/push)"
+              (( ++warnings ))
+              ;;
+            diverged)
+              _juvy_warn "Local and remote have diverged (ahead $remote_ahead, behind $remote_behind)"
+              _juvy_warn "Run 'juvy remote push' to reconcile automatically"
+              (( ++warnings ))
+              ;;
+            no_remote_branch)
+              _juvy_warn "Remote branch 'main' does not exist yet (run 'juvy remote push')"
+              (( ++warnings ))
+              ;;
+          esac
         else
           _juvy_warn "Remote not reachable (check network/auth)"
           (( ++warnings ))

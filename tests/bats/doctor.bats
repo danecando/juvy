@@ -110,3 +110,36 @@ teardown() {
 
   [ "$status" -eq 0 ]
 }
+
+@test "doctor warns when local and remote histories have diverged" {
+  local remote_repo="$TEST_ROOT/remote.git"
+  local machine_b_repo="$TEST_ROOT/machine-b"
+
+  git init --bare "$remote_repo" >/dev/null 2>&1
+  git -C "$BACKUP_DIR" remote add origin "$remote_repo"
+  printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_PUSH='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
+
+  create_test_file "~/.zshrc" "base"
+  add_to_backup_list "~/.zshrc"
+  juvy backup >/dev/null 2>&1
+  juvy remote push >/dev/null 2>&1
+
+  git clone "$remote_repo" "$machine_b_repo" >/dev/null 2>&1
+  git -C "$machine_b_repo" config user.name "Machine B"
+  git -C "$machine_b_repo" config user.email "machine-b@example.com"
+  git -C "$machine_b_repo" checkout -B main origin/main >/dev/null 2>&1
+  echo "from-b" > "$machine_b_repo/machine-b.txt"
+  git -C "$machine_b_repo" add machine-b.txt
+  git -C "$machine_b_repo" commit -m "Machine B update" >/dev/null 2>&1
+  git -C "$machine_b_repo" push origin HEAD:main >/dev/null 2>&1
+
+  create_test_file "~/.zshrc" "from-a"
+  juvy backup >/dev/null 2>&1
+
+  run juvy doctor
+
+  [[ "$output" == *"diverged"* ]]
+  [[ "$output" == *"juvy remote push"* ]]
+}

@@ -100,44 +100,48 @@ _juvy_remote_push() {
     return 1
   fi
 
-  echo "Pushing to remote..."
+  echo "Syncing and pushing to remote..."
 
   # Check if we have commits to push
-  if ! _juvy_git log --oneline -1 >/dev/null 2>&1; then
+  if ! _juvy_git rev-parse --verify HEAD >/dev/null 2>&1; then
     echo "No commits to push" >&2
     return 1
   fi
 
-  # Push to remote
-  if _juvy_git push "$remote_name" "$branch"; then
+  if _juvy_remote_sync_and_push "false"; then
     echo "Successfully pushed to remote"
     return 0
   else
     local exit_code=$?
     echo "Failed to push to remote" >&2
 
-    # Provide helpful error messages
-    if [[ $exit_code -eq 128 ]]; then
-      echo "This might be the first push. Try: juvy git push -u $remote_name $branch" >&2
-    else
-      echo "Check your authentication and network connection" >&2
-      echo "For detailed error: juvy git push $remote_name $branch" >&2
-    fi
+    case "$exit_code" in
+      3)
+        echo "Remote history could not be reconciled automatically (rebase conflict)." >&2
+        echo "Resolve conflicts in the backup repo, then run: juvy remote push" >&2
+        echo "Useful commands: juvy git status, juvy git rebase --continue, juvy git rebase --abort" >&2
+        ;;
+      *)
+        echo "Check your authentication and network connection" >&2
+        echo "For detailed error: juvy git push $remote_name $branch" >&2
+        ;;
+    esac
 
     return $exit_code
   fi
 }
 
 _juvy_remote_push_auto() {
-  local remote_name="${_JUVY_REMOTE_NAME:-origin}"
-  local branch="main"
-
-  # Silent version of push for auto-push during backup
-  if _juvy_git push "$remote_name" "$branch" >/dev/null 2>&1; then
+  # Silent version of sync + push for auto-push during backup
+  if _juvy_remote_sync_and_push "true"; then
     return 0
   else
-    # Log the error but don't print to stderr (backup should continue)
-    _juvy_log_error "Auto-push failed during backup"
+    local exit_code=$?
+    if [[ "$exit_code" -eq 3 ]]; then
+      _juvy_log_error "Auto-push failed: remote rebase conflict requires manual resolution"
+    else
+      _juvy_log_error "Auto-push failed during backup"
+    fi
     return 1
   fi
 }
@@ -145,6 +149,7 @@ _juvy_remote_push_auto() {
 _juvy_remote_status() {
   local remote_name="${_JUVY_REMOTE_NAME:-origin}"
   local branch="main"
+  local state_data state ahead behind
 
   echo "Remote Configuration:"
 
@@ -154,27 +159,140 @@ _juvy_remote_status() {
     echo "   Auto-push: ${_JUVY_REMOTE_PUSH:-false}"
     echo ""
 
-    # Check if remote is reachable
-    if _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
-      echo "Remote is reachable"
+    state_data="$(_juvy_remote_get_sync_state "$branch" "true")"
+    state="${state_data%%|*}"
+    state_data="${state_data#*|}"
+    ahead="${state_data%%|*}"
+    behind="${state_data#*|}"
 
-      # Check for unpushed commits
-      local unpushed
-      unpushed="$(_juvy_git log --oneline "$remote_name/$branch"..HEAD 2>/dev/null | wc -l)"
-      unpushed="${unpushed#"${unpushed%%[![:space:]]*}"}"
-
-      if [[ "$unpushed" -gt 0 ]]; then
-        echo "$unpushed commit(s) waiting to be pushed"
-      else
+    case "$state" in
+      in_sync)
+        echo "Remote is reachable"
         echo "Local and remote are in sync"
-      fi
-    else
-      echo "Remote is not reachable"
-    fi
+        ;;
+      ahead)
+        echo "Remote is reachable"
+        echo "$ahead commit(s) waiting to be pushed"
+        ;;
+      behind)
+        echo "Remote is reachable"
+        echo "Local backup is behind remote by $behind commit(s)"
+        echo "Run 'juvy remote push' to sync (juvy will rebase local commits automatically)"
+        ;;
+      diverged)
+        echo "Remote is reachable"
+        echo "Local and remote have diverged (ahead $ahead, behind $behind)"
+        echo "Run 'juvy remote push' to auto-rebase and push"
+        ;;
+      no_remote_branch)
+        echo "Remote is reachable"
+        echo "Remote branch '$branch' does not exist yet"
+        echo "Run 'juvy remote push' to create it"
+        ;;
+      no_local_commits)
+        echo "Remote is reachable"
+        echo "No local commits yet"
+        ;;
+      unreachable)
+        echo "Remote is not reachable"
+        ;;
+      *)
+        echo "Remote status unavailable"
+        ;;
+    esac
   else
     echo "   No remote configured"
     echo ""
     echo "Add a remote with: juvy remote <url>"
+  fi
+}
+
+_juvy_remote_sync_and_push() {
+  local quiet="${1:-false}"
+  local remote_name="${_JUVY_REMOTE_NAME:-origin}"
+  local branch="main"
+  local remote_ref="$remote_name/$branch"
+  local attempts=0
+  local max_attempts=2
+
+  while (( attempts < max_attempts )); do
+    (( ++attempts ))
+
+    if ! _juvy_git fetch "$remote_name" >/dev/null 2>&1; then
+      [[ "$quiet" != "true" ]] && echo "Unable to fetch remote updates" >&2
+      return 1
+    fi
+
+    if _juvy_git rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
+      if ! _juvy_git merge-base --is-ancestor "$remote_ref" HEAD >/dev/null 2>&1; then
+        if ! _juvy_git rebase "$remote_ref" >/dev/null 2>&1; then
+          _juvy_git rebase --abort >/dev/null 2>&1 || true
+          [[ "$quiet" != "true" ]] && echo "Automatic rebase failed due to conflicts" >&2
+          return 3
+        fi
+      fi
+    fi
+
+    if _juvy_git push --set-upstream "$remote_name" "HEAD:$branch" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+
+  [[ "$quiet" != "true" ]] && echo "Push failed after retrying with remote sync" >&2
+  return 1
+}
+
+_juvy_remote_get_sync_state() {
+  local branch="${1:-main}"
+  local do_fetch="${2:-true}"
+  local remote_name="${_JUVY_REMOTE_NAME:-origin}"
+  local remote_ref="$remote_name/$branch"
+  local ahead=0
+  local behind=0
+
+  if [[ -z "$_JUVY_REMOTE_URL" ]]; then
+    echo "no_remote|0|0"
+    return 0
+  fi
+
+  if ! _juvy_git remote get-url "$remote_name" >/dev/null 2>&1; then
+    echo "no_remote|0|0"
+    return 0
+  fi
+
+  if ! _juvy_git rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo "no_local_commits|0|0"
+    return 0
+  fi
+
+  if [[ "$do_fetch" == "true" ]]; then
+    if ! _juvy_git ls-remote "$remote_name" >/dev/null 2>&1; then
+      echo "unreachable|0|0"
+      return 0
+    fi
+    if ! _juvy_git fetch "$remote_name" >/dev/null 2>&1; then
+      echo "unreachable|0|0"
+      return 0
+    fi
+  fi
+
+  if ! _juvy_git rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
+    ahead="$(_juvy_git rev-list --count HEAD 2>/dev/null || echo 0)"
+    echo "no_remote_branch|$ahead|0"
+    return 0
+  fi
+
+  ahead="$(_juvy_git rev-list --count "$remote_ref..HEAD" 2>/dev/null || echo 0)"
+  behind="$(_juvy_git rev-list --count "HEAD..$remote_ref" 2>/dev/null || echo 0)"
+
+  if [[ "$ahead" -gt 0 && "$behind" -gt 0 ]]; then
+    echo "diverged|$ahead|$behind"
+  elif [[ "$ahead" -gt 0 ]]; then
+    echo "ahead|$ahead|0"
+  elif [[ "$behind" -gt 0 ]]; then
+    echo "behind|0|$behind"
+  else
+    echo "in_sync|0|0"
   fi
 }
 
@@ -224,4 +342,3 @@ _juvy_remove_config() {
     mv "$_JUVY_CONFIG_FILE.tmp" "$_JUVY_CONFIG_FILE"
   fi
 }
-
