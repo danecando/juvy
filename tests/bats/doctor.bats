@@ -118,7 +118,7 @@ teardown() {
   git init --bare "$remote_repo" >/dev/null 2>&1
   git -C "$BACKUP_DIR" remote add origin "$remote_repo"
   printf "JUVY_REMOTE_URL='%s'\n" "$remote_repo" >> "$JUVY_CONFIG_DIR/config"
-  echo "JUVY_REMOTE_PUSH='false'" >> "$JUVY_CONFIG_DIR/config"
+  echo "JUVY_REMOTE_AUTO_SYNC='false'" >> "$JUVY_CONFIG_DIR/config"
   echo "JUVY_REMOTE_NAME='origin'" >> "$JUVY_CONFIG_DIR/config"
 
   create_test_file "~/.zshrc" "base"

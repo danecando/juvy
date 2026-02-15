@@ -45,7 +45,7 @@ _juvy_backup_internal() {
 
     # Auto-sync if remote is configured and enabled
     local push_status=""
-    if [[ "$_JUVY_REMOTE_PUSH" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
+    if [[ "$_JUVY_REMOTE_AUTO_SYNC" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
       if _juvy_remote_sync_auto; then
         _juvy_info "Changes synced to remote"
         push_status=" (synced to remote)"

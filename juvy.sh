@@ -22,7 +22,7 @@ _JUVY_BACKUP_FILE=""
 _JUVY_LOG_FILE=""
 _JUVY_BACKUP_DIR=""
 _JUVY_REMOTE_URL=""
-_JUVY_REMOTE_PUSH=""
+_JUVY_REMOTE_AUTO_SYNC=""
 _JUVY_REMOTE_NAME=""
 _JUVY_PLATFORM=""
 
@@ -90,7 +90,7 @@ _juvy_load_config() {
 
   _JUVY_BACKUP_DIR="$(_juvy_default_backup_dir)"
   _JUVY_REMOTE_URL=""
-  _JUVY_REMOTE_PUSH=""
+  _JUVY_REMOTE_AUTO_SYNC=""
   _JUVY_REMOTE_NAME=""
 
   if [[ -f "$_JUVY_CONFIG_FILE" ]]; then
@@ -123,8 +123,8 @@ _juvy_load_config() {
         JUVY_REMOTE_NAME)
           _JUVY_REMOTE_NAME="$value"
           ;;
-        JUVY_REMOTE_PUSH)
-          _JUVY_REMOTE_PUSH="$value"
+        JUVY_REMOTE_AUTO_SYNC)
+          _JUVY_REMOTE_AUTO_SYNC="$value"
           ;;
       esac
     done < "$_JUVY_CONFIG_FILE"
@@ -483,7 +483,7 @@ _juvy_prompt_remote_setup() {
   local force_reinit="$1"
   local remote_url choice
   local current_remote="$_JUVY_REMOTE_URL"
-  local current_push="$_JUVY_REMOTE_PUSH"
+  local current_auto_sync="$_JUVY_REMOTE_AUTO_SYNC"
 
   echo ""
   echo "Git Remote Setup (Optional)"
@@ -497,7 +497,7 @@ _juvy_prompt_remote_setup() {
 
   if [[ "$force_reinit" == "true" && -n "$current_remote" ]]; then
     echo "Current remote: $current_remote"
-    echo "Current auto-sync: ${current_push:-false}"
+    echo "Current auto-sync: ${current_auto_sync:-false}"
     echo ""
     echo "Enter new git remote URL (or press Enter to keep current):"
   else
@@ -569,13 +569,13 @@ _juvy_prompt_remote_setup() {
   if [[ "$test_success" == "true" ]]; then
     # Update config file
     _juvy_update_config "JUVY_REMOTE_URL" "$remote_url"
-    _juvy_update_config "JUVY_REMOTE_PUSH" "true"
+    _juvy_update_config "JUVY_REMOTE_AUTO_SYNC" "true"
     _juvy_update_config "JUVY_REMOTE_NAME" "$remote_name"
 
     echo "Remote setup completed successfully"
     echo ""
     echo "Auto-sync is enabled. Future backups will be synced automatically."
-    echo "To disable auto-sync: Set JUVY_REMOTE_PUSH=false in $_JUVY_CONFIG_FILE"
+    echo "To disable auto-sync: Set JUVY_REMOTE_AUTO_SYNC=false in $_JUVY_CONFIG_FILE"
   fi
 }
 
@@ -864,7 +864,7 @@ _juvy_validate_config_file() {
           issues+=("Line $line_num: Invalid git URL format: $test_url")
         fi
         ;;
-      JUVY_REMOTE_PUSH)
+      JUVY_REMOTE_AUTO_SYNC)
         # Validate boolean
         local test_bool
         if ! test_bool="$(_juvy_parse_quoted_value "$value")"; then
@@ -1039,7 +1039,7 @@ _juvy_backup_internal() {
 
     # Auto-sync if remote is configured and enabled
     local push_status=""
-    if [[ "$_JUVY_REMOTE_PUSH" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
+    if [[ "$_JUVY_REMOTE_AUTO_SYNC" == "true" && -n "$_JUVY_REMOTE_URL" ]]; then
       if _juvy_remote_sync_auto; then
         _juvy_info "Changes synced to remote"
         push_status=" (synced to remote)"
@@ -3167,7 +3167,7 @@ _juvy_remote() {
 
 _juvy_remote_set() {
   local url="$1"
-  local auto_push="true"
+  local auto_sync="true"
   local remote_name="origin"
 
   _juvy_validate_backup_dir_exists || return 1
@@ -3196,7 +3196,7 @@ _juvy_remote_set() {
 
   # Update config file
   _juvy_update_config "JUVY_REMOTE_URL" "$url"
-  _juvy_update_config "JUVY_REMOTE_PUSH" "$auto_push"
+  _juvy_update_config "JUVY_REMOTE_AUTO_SYNC" "$auto_sync"
   _juvy_update_config "JUVY_REMOTE_NAME" "$remote_name"
 
   echo "Remote configured with auto-sync enabled"
@@ -3221,7 +3221,7 @@ _juvy_remote_off() {
 
   # Remove from config
   _juvy_remove_config "JUVY_REMOTE_URL"
-  _juvy_remove_config "JUVY_REMOTE_PUSH"
+  _juvy_remove_config "JUVY_REMOTE_AUTO_SYNC"
   _juvy_remove_config "JUVY_REMOTE_NAME"
 
   echo "Remote disabled - auto-sync turned off"
@@ -3240,7 +3240,7 @@ _juvy_remote_sync() {
 
   # Check if we have commits to push
   if ! _juvy_git rev-parse --verify HEAD >/dev/null 2>&1; then
-    echo "No commits to push" >&2
+    echo "No commits to sync" >&2
     return 1
   fi
 
@@ -3293,7 +3293,7 @@ _juvy_remote_status() {
   if [[ -n "$_JUVY_REMOTE_URL" ]]; then
     echo "   URL: $_JUVY_REMOTE_URL"
     echo "   Name: $remote_name"
-    echo "   Auto-sync: ${_JUVY_REMOTE_PUSH:-false}"
+    echo "   Auto-sync: ${_JUVY_REMOTE_AUTO_SYNC:-false}"
     echo ""
 
     state_data="$(_juvy_remote_get_sync_state "true")"
@@ -3310,7 +3310,7 @@ _juvy_remote_status() {
         ;;
       ahead)
         echo "Remote is reachable"
-        echo "$ahead commit(s) waiting to be pushed"
+        echo "$ahead commit(s) waiting to be synced"
         ;;
       behind)
         echo "Remote is reachable"

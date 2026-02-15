@@ -22,6 +22,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Removed
 - `juvy remote push` command. Use `juvy remote sync`.
+- `JUVY_REMOTE_PUSH` config key. Use `JUVY_REMOTE_AUTO_SYNC`.
 
 ## [1.2.0] - 2026-02-15
 
